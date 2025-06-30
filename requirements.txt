@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+yfinance
+requests
+python-dotenv
+sqlalchemy       # optional, if you hook up Postgres/SQLModel later
+alembic          # optional, for DB migrations
