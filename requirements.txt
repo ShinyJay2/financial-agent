@@ -5,3 +5,6 @@ requests
 python-dotenv
 sqlalchemy       # optional, if you hook up Postgres/SQLModel later
 alembic          # optional, for DB migrations
+pydantic-settings
+sentence-transformers==5.0.0
+chromadb
