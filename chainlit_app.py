@@ -5,7 +5,7 @@ import chainlit as cl
 
 from app.krx_client import get_realtime_price
 from app.hyperclova_client import ask_hyperclova
-from app.ticker_map import COMPANY_TICKERS as TICKER_MAP
+from app.ticker_map import find_ticker
 
 from langchain.llms.base import LLM
 from langchain.chains import LLMChain
@@ -13,67 +13,71 @@ from langchain.prompts import PromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 
-# 1) Define a Pydantic schema for extraction
+# 1) Pydantic model for extraction
 class Company(BaseModel):
     company_name: str = Field(..., description="Korean company name")
 
-# 2) Build the output parser
+# 2) Parser and prompt
 parser = PydanticOutputParser(pydantic_object=Company)
-
-# 3) Prompt template to extract the company name
-prompt_template = """
+prompt = PromptTemplate.from_template(
+    """
 Extract the Korean company name from this query:
 Query: "{query}"
-Return JSON only, with a single key 'company_name'.
+Return JSON only with a single key 'company_name'.
 """
-prompt = PromptTemplate.from_template(prompt_template)
+)
 
-# 4) Wrap HyperClova as a LangChain LLM
+# 3) Wrap HyperClova for LangChain
 class HyperClovaLLM(LLM):
     @property
     def _llm_type(self) -> str:
         return "hyperclova"
+
     def _call(self, prompt: str, stop=None) -> str:
         return ask_hyperclova(prompt)
 
 llm = HyperClovaLLM()
 
-# 5) Create the extraction chain
-extract_chain = LLMChain(llm=llm, prompt=prompt, output_parser=parser)
+# 4) Build the extraction chain
+extract_chain = LLMChain(
+    llm=llm,
+    prompt=prompt,
+    output_parser=parser
+)
 
-# 6) Simple regex to detect price intent
+# 5) Keywords for price intent
 PRICE_KEYWORDS = ("주가", "현재가", "시세")
 
 @cl.on_message
 async def main(message: cl.Message):
     query = message.content.strip()
 
-    # 1) If the user asks for a price
+    # 1) Price intent?
     if any(k in query for k in PRICE_KEYWORDS):
-        # Extract company name via LangChain
-        result_json = extract_chain.run({"query": query})
-        company = Company.parse_raw(result_json).company_name
+        # a) Extract company_name model
+        company_model = extract_chain.predict_and_parse(query=query)
+        company = company_model.company_name
 
-        # Resolve to ticker code
-        ticker = TICKER_MAP.get(company)
+        # b) Resolve to ticker
+        ticker = find_ticker(company)
         if not ticker:
             await cl.Message(
-                content=f"❓ Could not resolve company name: {company}"
+                content=f"❓ Could not resolve company: {company}"
             ).send()
             return
 
-        # Fetch and reply with real-time price
+        # c) Fetch price
         try:
             price = get_realtime_price(ticker)
             await cl.Message(
-                content=f"💹 {company}({ticker}) current price: {price:,} KRW"
+                content=f"💹 {company} ({ticker}) current price: {price:,} KRW"
             ).send()
         except Exception as e:
             await cl.Message(
-                content=f"❗️ Failed to fetch price for {company}({ticker}): {e}"
+                content=f"❗️ Failed fetching price for {company}({ticker}): {e}"
             ).send()
 
-    # 2) Otherwise delegate to HyperClova
+    # 2) General fallback to HyperClova
     else:
         try:
             answer = ask_hyperclova(query)
