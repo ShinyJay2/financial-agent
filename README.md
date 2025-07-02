@@ -65,24 +65,41 @@ In your browser, go to the printed URL (e.g. [http://localhost:8000](http://loca
 
 ## Project Structure
 
-finagent/
-├── .env.example
-├── requirements.txt
-├── scripts/
-│   └── ingest.py
-├── app/
-│   ├── config.py
-│   ├── embeddings.py
-│   ├── vectorstore.py
-│   ├── krx_client.py
-│   ├── ticker_map.py
-│   ├── hyperclova_client.py
-│   ├── entity_extraction.py
-│   ├── main.py
-│   └── routers/
-│       └── agent.py
-├── chainlit_app.py
-└── README.md
+inagent/
+
+.env.example
+
+requirements.txt
+
+scripts/
+
+ingest.py
+
+app/
+
+config.py
+
+embeddings.py
+
+vectorstore.py
+
+krx_client.py
+
+ticker_map.py
+
+hyperclova_client.py
+
+entity_extraction.py
+
+main.py
+
+routers/
+
+agent.py
+
+chainlit_app.py
+
+README.md
 
 
 ## File Overview
