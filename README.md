@@ -66,23 +66,24 @@ In your browser, go to the printed URL (e.g. [http://localhost:8000](http://loca
 ## Project Structure
 
 finagent/
-├ .env.example  Environment variable template
-├ requirements.txt Project dependencies
-├ scripts/
-│ └ ingest.py  Document chunking & Chroma ingestion example
-├ app/
-│ ├ config.py Pydantic settings loader
-│ ├ embeddings.py Sentence-Transformers & Router initialization
-│ ├ vectorstore.py Chroma client (`upsert_document`, `hybrid_search`)
-│ ├ krx\_client.py PyKRX + FDR real-time stock/index API
-│ ├ ticker\_map.py Dynamic name→ticker mapping via PyKRX
-│ ├ hyperclova\_client.py HyperClova HTTP wrapper
-│ ├ entity\_extraction.py LangChain extraction chain for company names
-│ ├ routers/
-│ │ └ agent.py FastAPI GET `/agent` logic
-│ └ main.py FastAPI app instantiation
-├ chainlit\_app.py Chainlit chat UI entrypoint
-└ README.md  This file
+├── .env.example
+├── requirements.txt
+├── scripts/
+│   └── ingest.py
+├── app/
+│   ├── config.py
+│   ├── embeddings.py
+│   ├── vectorstore.py
+│   ├── krx_client.py
+│   ├── ticker_map.py
+│   ├── hyperclova_client.py
+│   ├── entity_extraction.py
+│   ├── main.py
+│   └── routers/
+│       └── agent.py
+├── chainlit_app.py
+└── README.md
+
 
 ## File Overview
 
