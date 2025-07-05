@@ -12,3 +12,4 @@ pykrx
 finance-datareader
 chainlit
 langchain
+dart-fss>=0.2.2

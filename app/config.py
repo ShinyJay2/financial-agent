@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     # Sentence-Transformer model names
     EMBEDDING_MODEL_NAME: str = Field("all-mpnet-base-v2", env="EMBEDDING_MODEL_NAME")
     SPARSE_MODEL_NAME: str = Field("naver/splade-v3", env="SPARSE_MODEL_NAME")
+    DART_API_KEY: str 
 
     class Config:
         env_file = ".env"
