@@ -1,4 +1,4 @@
-#!/Users/shinyjay/Desktop/finagent/finagent/bin/python3
+#!/Users/shinyjay/Desktop/finagent/finagent/bin/python3.13
 
 import datetime
 import os
