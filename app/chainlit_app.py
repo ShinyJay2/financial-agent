@@ -3,9 +3,9 @@
 import re
 import chainlit as cl
 
-from app.krx_client import get_realtime_price
-from app.hyperclova_client import ask_hyperclova
-from app.ticker_map import find_ticker
+from app.ingestion.krx_client import get_realtime_price
+from app.clients.hyperclova_client import ask_hyperclova
+from app.utils.ticker_map import find_ticker
 
 from langchain.llms.base import LLM
 from langchain.chains import LLMChain

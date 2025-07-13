@@ -3,6 +3,8 @@
 from pykrx import stock
 from datetime import datetime, timedelta
 import FinanceDataReader as fdr
+import pandas as pd
+import numpy as np
 
 LOOKBACK_DAYS = 5
 
@@ -70,3 +72,29 @@ def get_realtime_price(ticker: str) -> float:
     Alias for get_stock_close_price for symmetry.
     """
     return get_stock_close_price(ticker)
+
+
+def get_market_ohlcv_by_date(
+    fromdate: str,
+    todate: str,
+    ticker: str
+) -> pd.DataFrame:
+    """
+    Fetch daily OHLCV for `ticker` between `fromdate` and `todate` (YYYYMMDD).
+    """
+    return stock.get_market_ohlcv(fromdate, todate, ticker)
+
+
+def get_historical_volatility(
+    ticker: str, period_days: int = 252, window: int = 30
+) -> float:
+    """
+    Fetch the last `period_days` of daily close prices,
+    compute rolling std. dev. over `window` days, and return the latest.
+    """
+    df = get_market_ohlcv_by_date(fromdate="20220101", todate="20251231", ticker=ticker)
+    # assume df has '종가' column
+    prices = df["종가"].astype(float)
+    returns = prices.pct_change().dropna()
+    vol = returns.rolling(window).std() * np.sqrt(252)
+    return float(vol.iloc[-1])

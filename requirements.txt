@@ -1,15 +1,30 @@
-fastapi
-uvicorn
-yfinance
-requests
+# Environment & config
 python-dotenv
-sqlalchemy       # optional, if you hook up Postgres/SQLModel later
-alembic          # optional, for DB migrations
 pydantic-settings
-sentence-transformers==5.0.0
-chromadb
-pykrx
-finance-datareader
+
+# Chainlit UI/demo framework
 chainlit
-langchain
+
+# Vector store & embeddings
+chromadb
+openai>=1.0.0
+tiktoken
+beautifulsoup4
+
+# Document parsing & chunking
+pdfminer.six>=20221105  # Updated version for better PDF handling
+python-docx
+pandas
+
+# Korean finance data clients
+pykrx
+yfinance
 dart-fss>=0.2.2
+
+# Natural Language Processing & Machine Learning
+konlpy  # For Korean NLP, requires Java (e.g., JDK 11+)
+scikit-learn>=1.0.0  # For machine learning utilities
+rank-bm25  # For BM25 ranking algorithm
+
+# Dependencies for konlpy (optional, install manually if needed)
+# jpype1>=1.4.0  # Java bridge for konlpy, may need separate installation

@@ -1,6 +1,6 @@
 # test_dart.py
 
-from app.dart_fss_client import (
+from app.ingestion.dart_fss_client import (
     get_corp_list,
     find_company_by_name,
     extract_financial_statements,
