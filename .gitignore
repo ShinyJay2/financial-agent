@@ -13,3 +13,6 @@ finagent/
 
 # VSCode settings
 .vscode/
+
+# ChromaDB
+chroma_db/

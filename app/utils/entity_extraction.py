@@ -6,7 +6,7 @@ from langchain.prompts import PromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from langchain.llms.base import LLM
 
-from app.hyperclova_client import ask_hyperclova
+from app.clients.hyperclova_client import ask_hyperclova
 
 class HyperClovaLLM(LLM):
     @property
