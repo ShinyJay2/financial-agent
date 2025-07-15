@@ -28,3 +28,5 @@ rank-bm25  # For BM25 ranking algorithm
 
 # Dependencies for konlpy (optional, install manually if needed)
 # jpype1>=1.4.0  # Java bridge for konlpy, may need separate installation
+
+sentence-transformers==5.0.0
