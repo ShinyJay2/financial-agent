@@ -2,7 +2,7 @@
 
 A Retrieval-Augmented Generation (RAG)–powered financial agent built with FastAPI and ChromaDB.
 
-## File structure
+## File structure -app
 
 ```text
 📦app
