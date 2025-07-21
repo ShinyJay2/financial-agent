@@ -7,13 +7,15 @@ import mimetypes
 from typing import List
 from pathlib import Path
 
+import fitz  # PyMuPDF for fast PDF text extraction
+import camelot  # for table extraction from PDFs
 from bs4 import BeautifulSoup
 import tiktoken
-from pdfminer.high_level import extract_text
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.cluster import KMeans
 import docx
 from openai import OpenAI
+
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
 
 from app.config import settings
 
@@ -22,7 +24,7 @@ _client = OpenAI(api_key=settings.OPENAI_API_KEY)
 # Vision model to use for OCR
 _VISION_MODEL = settings.VISION_MODEL_NAME
 
-# simple regex for word‐level tokenization
+# simple regex for word-level tokenization
 _TOKENIZER = re.compile(r"\w+")
 
 def _tokenize(text: str) -> List[str]:
@@ -58,7 +60,6 @@ def topic_model_chunk(text: str, n_topics: int = 5) -> List[str]:
     Cluster sentences into n_topics via TF–IDF + KMeans,
     then return one chunk per cluster.
     """
-    # simple sentence splitter on punctuation
     sentences = [s.strip() for s in re.split(r'(?<=[\.\?\!])\s+', text) if s.strip()]
     if len(sentences) <= n_topics:
         return sentences
@@ -114,10 +115,33 @@ def sliding_window_chunk(
 ) -> List[str]:
     """
     Tokenize + chunk with tiktoken overlapping windows.
+    If the text is very large, do a simple paragraph-based split
+    to avoid the cost of encoding the entire thing.
     """
+    # rough chars-per-token estimate; adjust if needed
+    avg_char_per_token = 4
+    max_chars = max_tokens * avg_char_per_token
+
+    # if text is huge, fallback to paragraph-based splits
+    if len(text) > max_chars * 20:
+        paras = text.split("\n\n")
+        chunks = []
+        buf = ""
+        for p in paras:
+            if len(buf) + len(p) + 2 > max_chars:
+                chunks.append(buf)
+                buf = p
+            else:
+                buf = f"{buf}\n\n{p}" if buf else p
+        if buf:
+            chunks.append(buf)
+        return chunks
+
+    # token-based windowing for smaller texts
     model = model_name or settings.EMBEDDING_MODEL_NAME
     enc = tiktoken.encoding_for_model(model)
     tokens = enc.encode(text)
+
     chunks, start, total = [], 0, len(tokens)
     while start < total:
         end = min(start + max_tokens, total)
@@ -160,9 +184,69 @@ def chunk_excel(file_path: str, rows_per_chunk: int = 50) -> List[str]:
         chunks.append("\n".join(lines))
     return chunks
 
-def chunk_pdf(file_path: str, max_tokens: int = 500, overlap: int = 50) -> List[str]:
-    text = extract_text(file_path)
-    return sliding_window_chunk(text, max_tokens, overlap)
+def extract_text_fast(path: str) -> str:
+    doc = fitz.open(path)
+    return "".join(page.get_text() for page in doc)
+
+def extract_pdf_images(file_path: str) -> list[bytes]:
+    """
+    Open the PDF with PyMuPDF and pull out every embedded image as PNG bytes.
+    """
+    import fitz
+    doc = fitz.open(file_path)
+    images = []
+    for page_index in range(len(doc)):
+        for img in doc.get_page_images(page_index, full=True):
+            xref = img[0]
+            pix = fitz.Pixmap(doc, xref)
+            # convert CMYK or other >4-channel into RGB
+            if pix.n > 4:
+                pix = fitz.Pixmap(fitz.csRGB, pix)
+            images.append(pix.tobytes("png"))
+            pix = None
+    return images
+
+def parse_chart_with_gpt(img_bytes: bytes) -> str:
+    # This is pseudocode — adapt to your vision client
+    resp = _client.responses.create(
+        model=_VISION_MODEL,
+        input=[{
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": "Summarize the core content and numbers here. Answer in Korean."},
+                {"type": "input_image", "image_base64": base64.b64encode(img_bytes).decode()}
+            ]
+        }]
+    )
+    return resp.output_text or ""
+
+
+
+def chunk_pdf(file_path: str, max_tokens: int=500, overlap: int=50) -> List[str]:
+    # 1) Camelot table extraction
+    try:
+        tables = camelot.read_pdf(file_path, pages="all", flavor="stream")
+        if tables:
+            return [
+                f"TABLE_{i}\n{table.df.to_csv(index=False)}"
+                for i, table in enumerate(tables)
+            ]
+    except Exception:
+        pass
+
+    # 2) Chart extraction + GPT interpretation
+    chart_chunks = []
+    for idx, img in enumerate(extract_pdf_images(file_path)):
+        text = parse_chart_with_gpt(img)
+        if text.strip():
+            chart_chunks.append(f"CHART_{idx}\n{text}")
+    if chart_chunks:
+        return chart_chunks
+
+    # 3) Fallback to raw text
+    raw = extract_text_fast(file_path)
+    return sliding_window_chunk(raw, max_tokens, overlap)
+
 
 def chunk_docx(file_path: str, max_tokens: int = 500, overlap: int = 50) -> List[str]:
     doc = docx.Document(file_path)
@@ -203,6 +287,10 @@ def extract_risk_factors(html: str) -> str:
         texts.append(sib.get_text(separator="\n", strip=True))
     return "\n".join(texts)
 
+from pathlib import Path
+import re
+from typing import List
+
 def chunk_file(
     file_path: str,
     max_tokens: int = 500,
@@ -211,36 +299,53 @@ def chunk_file(
     rows_per_chunk: int = 50
 ) -> List[str]:
     ext = Path(file_path).suffix.lower()
+    chunks: List[str]
+
     if ext in {".html", ".xml"}:
         content = Path(file_path).read_text(encoding="utf-8", errors="ignore")
         risk_txt = extract_risk_factors(content)
         if risk_txt:
-            return sliding_window_chunk(risk_txt, max_tokens, overlap)
-        secs = semantic_section_chunk(content)
-        if secs:
-            return secs
-        return section_chunk_html(content)
+            chunks = sliding_window_chunk(risk_txt, max_tokens, overlap)
+        else:
+            secs = semantic_section_chunk(content)
+            if secs:
+                chunks = secs
+            else:
+                chunks = section_chunk_html(content)
 
-    if ext == ".json":
+    elif ext == ".json":
         raw = Path(file_path).read_text(encoding="utf-8", errors="ignore")
-        return chunk_json(raw, records_per_chunk)
+        chunks = chunk_json(raw, records_per_chunk)
 
-    if ext == ".csv":
+    elif ext == ".csv":
         raw = Path(file_path).read_text(encoding="utf-8", errors="ignore")
-        return chunk_csv(raw, rows_per_chunk)
+        chunks = chunk_csv(raw, rows_per_chunk)
 
-    if ext in {".xls", ".xlsx"}:
-        return chunk_excel(file_path, rows_per_chunk)
+    elif ext in {".xls", ".xlsx"}:
+        chunks = chunk_excel(file_path, rows_per_chunk)
 
-    if ext == ".pdf":
-        return chunk_pdf(file_path, max_tokens, overlap)
+    elif ext == ".pdf":
+        chunks = chunk_pdf(file_path, max_tokens, overlap)
 
-    if ext == ".docx":
-        return chunk_docx(file_path, max_tokens, overlap)
+    elif ext == ".docx":
+        chunks = chunk_docx(file_path, max_tokens, overlap)
 
-    if ext in {".png", ".jpg", ".jpeg", ".tiff"}:
-        return chunk_image(file_path, max_tokens, overlap)
+    elif ext in {".png", ".jpg", ".jpeg", ".tiff"}:
+        chunks = chunk_image(file_path, max_tokens, overlap)
 
-    # fallback: raw text
-    raw = Path(file_path).read_text(encoding="utf-8", errors="ignore")
-    return sliding_window_chunk(raw, max_tokens, overlap)
+    else:
+        raw = Path(file_path).read_text(encoding="utf-8", errors="ignore")
+        chunks = sliding_window_chunk(raw, max_tokens, overlap)
+
+    # ────────────────────────────────────────────────
+    # Filter out any chunk whose first line is “Compliance notice”
+    # ────────────────────────────────────────────────
+    filtered: List[str] = []
+    for c in chunks:
+        first_line = c.lstrip().split("\n", 1)[0]
+        if re.match(r"Compliance\s+notice", first_line, re.IGNORECASE):
+            continue
+        filtered.append(c)
+
+    return filtered
+
