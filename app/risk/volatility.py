@@ -5,36 +5,39 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 
-def classify_risk(volatility: float) -> str:
+def classify_risk(vol: float) -> str:
     """
     Classify annualized volatility into risk categories.
     """
-    if volatility is None:
-        return "Unknown"
-    elif volatility >= 0.30:
-        return "High"
-    elif volatility >= 0.15:
-        return "Medium"
+    if vol >= 0.70:
+        return "매우 높음"    # 상위 10%
+    elif vol >= 0.58:
+        return "높음"        # P80 이상
+    elif vol >= 0.35:
+        return "중간"        # P40 이상
+    elif vol >= 0.21:
+        return "낮음"       # P10 이상
     else:
-        return "Low"
+        return "매우 낮음"
 
 def get_volatility_info(
     ticker: str,
-    fromdate: str = "",
-    todate: str = ""
+    fromdate: str = None,
+    todate: str = None
 ) -> dict:
     """
     Calculate 1Y annualized volatility for a given ticker using daily returns.
     Returns volatility (float) and risk_level (str).
     """
     # 기본값: 오늘 기준 최근 1년
-    if todate is None:
+    if not todate:
         todate_dt = datetime.today()
+        print(todate_dt)
         todate = todate_dt.strftime("%Y%m%d")
     else:
         todate_dt = datetime.strptime(todate, "%Y%m%d")
 
-    if fromdate is None:
+    if not fromdate:
         fromdate_dt = todate_dt - timedelta(days=365)
         fromdate = fromdate_dt.strftime("%Y%m%d")
 
@@ -71,7 +74,7 @@ def get_volatility_info(
     }
 
 if __name__ == "__main__":
-    result = get_volatility_info("005930")
+    result = get_volatility_info("247540")
     print(result)
 
 # 출력 예시:
