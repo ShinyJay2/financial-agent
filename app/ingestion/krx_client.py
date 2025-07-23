@@ -85,6 +85,30 @@ def get_market_ohlcv_by_date(
     return stock.get_market_ohlcv(fromdate, todate, ticker)
 
 
+
+def get_index_ohlcv_by_date(
+    fromdate: str,
+    todate: str,
+    index_name: str = "KOSPI"
+) -> pd.DataFrame:
+    """
+    Return daily OHLCV for the given market index (KOSPI/KOSDAQ/KONEX)
+    between fromdate and todate. Dates must be in YYYYMMDD format.
+    """
+    code = _INDEX_CODES.get(index_name.upper())
+    if not code:
+        raise ValueError(f"Unsupported index: {index_name!r}")
+    
+    fromdate_fmt = f"{fromdate[:4]}-{fromdate[4:6]}-{fromdate[6:]}"
+    todate_fmt = f"{todate[:4]}-{todate[4:6]}-{todate[6:]}"
+    
+    df = fdr.DataReader(code, fromdate_fmt, todate_fmt)
+    if df.empty:
+        raise ValueError(f"No index data found for {index_name} from {fromdate} to {todate}")
+    
+    return df
+
+
 # app/risk/volatility.py 에서 다룰 것임
 
 # def get_historical_volatility(
