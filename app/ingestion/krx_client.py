@@ -85,16 +85,18 @@ def get_market_ohlcv_by_date(
     return stock.get_market_ohlcv(fromdate, todate, ticker)
 
 
-def get_historical_volatility(
-    ticker: str, period_days: int = 252, window: int = 30
-) -> float:
-    """
-    Fetch the last `period_days` of daily close prices,
-    compute rolling std. dev. over `window` days, and return the latest.
-    """
-    df = get_market_ohlcv_by_date(fromdate="20220101", todate="20251231", ticker=ticker)
-    # assume df has '종가' column
-    prices = df["종가"].astype(float)
-    returns = prices.pct_change().dropna()
-    vol = returns.rolling(window).std() * np.sqrt(252)
-    return float(vol.iloc[-1])
+# app/risk/volatility.py 에서 다룰 것임
+
+# def get_historical_volatility(
+#     ticker: str, period_days: int = 252, window: int = 30
+# ) -> float:
+#     """
+#     Fetch the last `period_days` of daily close prices,
+#     compute rolling std. dev. over `window` days, and return the latest.
+#     """
+#     df = get_market_ohlcv_by_date(fromdate="20220101", todate="20251231", ticker=ticker)
+#     # assume df has '종가' column
+#     prices = df["종가"].astype(float)
+#     returns = prices.pct_change().dropna()
+#     vol = returns.rolling(window).std() * np.sqrt(252)
+#     return float(vol.iloc[-1])
