@@ -1,5 +1,7 @@
 # test_dart.py
 
+from app.config import settings
+
 from app.dart_fss_client import (
     get_corp_list,
     find_company_by_name,
