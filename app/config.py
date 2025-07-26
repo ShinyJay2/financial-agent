@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from typing import Optional
 
@@ -11,10 +11,13 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL_NAME: str = Field("text-embedding-3-large", env="EMBEDDING_MODEL_NAME")
     VISION_MODEL_NAME: str = Field("gpt-4o-mini", env="VISION_MODEL_NAME")
     CHROMA_COLLECTION_NAME: str = "finagent_collection"
+    NAVER_CLIENT_ID:     str
+    NAVER_CLIENT_SECRET: str
 
-
-    class Config:
-        env_file = ".env", 
+      
+    model_config = SettingsConfigDict(
+        env_file = ".env",        # ← point at your .env here
         env_file_encoding = "utf-8"
+    )
 
 settings = Settings()
