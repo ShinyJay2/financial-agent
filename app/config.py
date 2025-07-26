@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     NAVER_CLIENT_ID:     str
     NAVER_CLIENT_SECRET: str
 
-
+      
     model_config = SettingsConfigDict(
         env_file = ".env",        # ← point at your .env here
         env_file_encoding = "utf-8"
