@@ -24,7 +24,7 @@ _client = OpenAI(api_key=settings.OPENAI_API_KEY)
 # Vision model to use for OCR
 _VISION_MODEL = settings.VISION_MODEL_NAME
 
-# simple regex for word-level tokenization
+# simple regex for word‐level tokenization
 _TOKENIZER = re.compile(r"\w+")
 
 def _tokenize(text: str) -> List[str]:
@@ -60,6 +60,7 @@ def topic_model_chunk(text: str, n_topics: int = 5) -> List[str]:
     Cluster sentences into n_topics via TF–IDF + KMeans,
     then return one chunk per cluster.
     """
+    # simple sentence splitter on punctuation
     sentences = [s.strip() for s in re.split(r'(?<=[\.\?\!])\s+', text) if s.strip()]
     if len(sentences) <= n_topics:
         return sentences
