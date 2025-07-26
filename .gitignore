@@ -15,4 +15,6 @@ finagent/
 .vscode/
 
 # ChromaDB
-chroma_db/
+chroma_db/.DS_Store
+.DS_Store
+chroma_db/**/*.bin

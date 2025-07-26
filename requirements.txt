@@ -16,6 +16,8 @@ pdfminer.six>=20221105  # Updated version for better PDF handling
 python-docx
 pandas
 PyPDF2
+pymupdf
+camelot
 
 # Korean finance data clients
 pykrx
