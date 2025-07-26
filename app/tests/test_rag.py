@@ -3,39 +3,33 @@
 
 import os
 import sys
-from importlib import reload
-
-# 1) Make sure your project root is on PYTHONPATH
-#    If you run this as a module (python -m …) you can skip this,
-#    otherwise uncomment the next two lines and adjust as needed:
-# sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
+import json
+from datetime import datetime
 from app.rag_pipeline import RAGPipeline
 
+import os, sys, shutil
+
+# Pre‐import wipe of the on‐disk ChromaDB folder
+project_root = os.path.abspath(os.path.join(__file__, "..", ".."))
+chroma_dir   = os.getenv("CHROMA_DB_DIR", "./chroma_db")
+db_path      = os.path.join(project_root, chroma_dir)
+if os.path.isdir(db_path):
+    print("🧹 Pre-import wipe of old vectorstore…")
+    shutil.rmtree(db_path)
+
+
 def main():
-    data_file = "data/20250704800844.xml"
-    if not os.path.exists(data_file):
-        print(f"❌ File not found: {data_file}")
+    # locate directories
+    base_dir     = os.path.dirname(__file__)
+    project_root = os.path.abspath(os.path.join(base_dir, "..", ".."))
+    data_root    = os.path.join(project_root, "data")
+    out_path     = os.path.join(project_root, "rag_output.json")
+
+    if not os.path.isdir(data_root):
+        print(f"❌ Data directory not found: {data_root}")
         sys.exit(1)
 
-    # 2) Read and parse the XML file
-    import xml.etree.ElementTree as ET
-    with open(data_file, "r", encoding="utf-8") as f:
-        raw = f.read()
-        try:
-            root = ET.fromstring(raw)
-            # Extract relevant sections from XML (customize based on your XML structure)
-            raw_data = {}
-            for elem in root.iter():
-                if elem.text and elem.text.strip():
-                    raw_data[f"section_{elem.tag}"] = elem.text.strip()
-            raw = "\n".join([f"{key}: {value}" for key, value in raw_data.items()])
-        except ET.ParseError as e:
-            print(f"⚠️ XML parsing error: {e}. Using raw text as fallback.")
-            # Fallback to raw text if XML parsing fails
-            raw = f.read() if 'f' in locals() else raw
-
-    # 3) Instantiate and ingest
+    # instantiate pipeline
     rag = RAGPipeline(
         chunk_method="section",
         bm25_k=20,
@@ -44,19 +38,47 @@ def main():
         max_tokens=300,
         overlap=50,
     )
-    print("🗂  Chunking & upserting…")
-    rag.ingest("testdoc", raw)
 
-    # 4) Try a few queries
+    # define queries
     queries = [
-        "발행회사 정보 요약해줘",
-        "보고일자와 소유주식 변동 개요 알려줘",
-        "위험요소 섹션을 찾아 요약해줘",
+        "삼성전자 정보 요약해줘",
+        "삼성전자 위험성을 요약해줘",
+        "삼성전자 최근 리포트를 요약해줘",
     ]
+
+    # ingest all files
+    for dirpath, _, filenames in os.walk(data_root):
+        for fname in filenames:
+            if fname.startswith("."):
+                continue
+            file_path = os.path.join(dirpath, fname)
+            print(f"\n=== Ingesting {file_path} ===")
+            rag.ingest_file(file_path)
+
+    # build BM25 index once
+    print("\n🚧 Building BM25 index…")
+    rag.finalize()
+
+    # run queries and collect results
+    results = {
+        "queries": [],
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+
     for q in queries:
-        print("\n❓ Q:", q)
+        print(f"\n❓ Q: {q}")
         ans = rag.answer(q)
-        print("💡 A:", ans)
+        print(f"💡 A: {ans}")
+        results["queries"].append({
+            "question": q,
+            "answer": ans
+        })
+
+    # write out updated JSON in project root
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
+
+    print(f"\n✅ Written updated JSON to {out_path}")
 
 if __name__ == "__main__":
     main()

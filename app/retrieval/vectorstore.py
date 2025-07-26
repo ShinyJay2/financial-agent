@@ -52,12 +52,23 @@ def build_bm25_index():
 # 3) Upsert & sparse/dense retrieval
 # ───────────────────────────────────────────────
 
-def upsert_document(doc_id: str, text: str):
+def upsert_document(doc_id: str, text: str, metadata: dict | None = None):
     """
-    Insert or update a single chunk in the Chroma collection.
-    After batch upserts, call build_bm25_index() to refresh BM25.
+    Insert or update a single chunk in the Chroma collection,
+    optionally with metadata (e.g. sentiment scores).
     """
-    dense_collection.upsert(ids=[doc_id], documents=[text])
+    if metadata:  # only include when non-empty
+        dense_collection.upsert(
+            ids=[doc_id],
+            documents=[text],
+            metadatas=[metadata]
+        )
+    else:
+        dense_collection.upsert(
+            ids=[doc_id],
+            documents=[text],
+        )
+
 
 def bm25_search(query: str, k: int) -> List[str]:
     """
