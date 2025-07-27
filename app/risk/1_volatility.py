@@ -79,3 +79,4 @@ if __name__ == "__main__":
 
 # 출력 예시:
 # {'ticker': '005930', 'volatility': 0.1423, 'risk_level': 'Low'}
+qqq
