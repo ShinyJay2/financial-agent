@@ -16,9 +16,14 @@ from ..chunking.chunker import extract_risk_factors
 dart.set_api_key(settings.DART_API_KEY)
 
 
+_CORP_LIST = dart.get_corp_list()
+
 def get_corp_list() -> CorpList:
-    """Return a list of all registered corporations."""
-    return dart.get_corp_list()
+    return _CORP_LIST
+
+# def get_corp_list() -> CorpList:
+#     """Return a list of all registered corporations."""
+#     return dart.get_corp_list()
 
 
 def find_company_by_name(name: str) -> Corp:
@@ -58,7 +63,7 @@ def extract_financial_statements(
     end_de = end_de or date.today().strftime("%Y%m%d")
     return corp.extract_fs(bgn_de=bgn_de, end_de=end_de, report_tp=report_tp)
 
-
+# get_risk_factors는 안쓰는 함수
 def get_risk_factors(corp_code: str, bgn_de: str, end_de: str) -> str:
     """
     Call DART to fetch the business report and extract only the risk factors section.

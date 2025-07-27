@@ -18,3 +18,4 @@ finagent/
 chroma_db/.DS_Store
 .DS_Store
 chroma_db/**/*.bin
+.DS_Store
