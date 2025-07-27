@@ -51,7 +51,7 @@ def extract_financial_statements(
     corp: Corp,
     bgn_de: str,
     end_de: Optional[str] = None,
-    report_tp: str = "quarter"
+    report_tp: str = "annual"
 ) -> Dict[str, DataFrame]:
     """
     Download and parse financial statements.

@@ -6,6 +6,7 @@ from ..utils.ticker_map import find_name_by_ticker
 from app.ingestion.dart_fss_client import find_company_by_name, extract_financial_statements
 
 
+
 def get_corp(ticker: str) -> Tuple[str, object]:
     """
     티커 → (회사명, Corp 객체) 반환
@@ -35,6 +36,7 @@ def extract_bs_df(corp, bgn_de: str) -> 'pd.DataFrame':
     """
     try:
         fs    = extract_financial_statements(corp, bgn_de=bgn_de, report_tp="annual")
+        print(f"fs 전체보기: {fs}")
         bs_df = fs["bs"]
     except NotFoundConsolidated:
         # 연결이 없으면 여기로
@@ -47,19 +49,6 @@ def extract_bs_df(corp, bgn_de: str) -> 'pd.DataFrame':
         raise ValueError("재무상태표 데이터가 없습니다.")
     print(f"📄 재무상태표 로우 수: {len(bs_df)}")
     return bs_df
-
-
-
-# def extract_bs_df(corp, bgn_de: str) -> 'pd.DataFrame':
-#     """
-#     Corp 객체로부터 연간 재무상태표(bs) DataFrame을 추출
-#     """
-#     fs = extract_financial_statements(corp, bgn_de=bgn_de, report_tp="annual")
-#     bs_df = fs["bs"]
-#     if bs_df is None or bs_df.empty:
-#         raise ValueError("재무상태표 데이터가 없습니다.")
-#     print(f"📄 재무상태표 로우 수: {len(bs_df)}")
-#     return bs_df
 
 
 def find_cols(bs_df) -> Tuple[object, object]:
@@ -185,4 +174,4 @@ def calculate_d_e_ratio(ticker: str) -> Dict[str, Union[str, int, float, None]]:
         }
 
 if __name__ == "__main__":
-    print(calculate_d_e_ratio("247540"))
+    print(calculate_d_e_ratio("005930"))
