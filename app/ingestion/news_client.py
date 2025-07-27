@@ -119,8 +119,8 @@ def extract_clean_text_from_article(html: str) -> str:
     return art.get_text(separator="\n\n", strip=True)
 
 if __name__ == "__main__":
-    STOCK_CODE = "005930"
-    DAYS_BACK  = 1
+    STOCK_CODE = "247540"
+    DAYS_BACK  = 50
     PAGE_SIZE  = 20
     news_cnt = 0
     
