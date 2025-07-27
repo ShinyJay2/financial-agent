@@ -129,34 +129,70 @@ def compute_evi(series: pd.Series) -> float:
     if mean_ == 0:
         return float('nan')
     return std_ / abs(mean_)
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 실행 예시 (__main__)
-if __name__ == "__main__":
-    # 1) Corp 가져오기
-    ticker = "005930"
+def calculate_evi(
+    ticker: str,
+    years: int = 3
+) -> Dict[str, Union[str, float]]:
+    """
+    주어진 ticker에 대해 EVI를 한 번에 계산하여
+    {'ticker','corp_name','net_label','evi'}를 반환합니다.
+    """
+    # 1) Corp 객체 가져오기
     corp_name, corp = get_corp(ticker)
-
-    # 2) 조회 시작일 계산 (연 단위)
-    bgn_de = compute_bgn_de(years=3)
-
-    # 3) CIS DF
+    # 2) 조회 시작일 계산
+    bgn_de = compute_bgn_de(years=years)
+    # 3) cis DataFrame 추출
     cis_df = extract_cis_df(corp, bgn_de)
-    # print(f"CIS rows: {len(cis_df)}")
-
-    # 4) account_col & net_label
+    # 4) account_col, net_label 결정
     account_col, net_label = find_net_income_label(cis_df)
-    print("▶ net_label:", net_label)
-
-    # 5) amount_cols
+    # 5) 기간별 금액 컬럼 리스트
     amount_cols = find_amount_cols(cis_df)
-    print("▶ amount_cols:", amount_cols)
-
-    # 6) 시계열 추출
+    # 6) 당기순이익 시계열 Series
     series = extract_net_income_series(cis_df, account_col, net_label, amount_cols)
-    print("▶ Net Income Series:")
-    print(series)
-
     # 7) EVI 계산
     evi_value = compute_evi(series)
-    print(f"{corp_name} ({ticker}) EVI: {evi_value:.4f}")
+
+    return {
+        "ticker":      ticker,
+        "corp_name":   corp_name,
+        "net_label":   net_label,
+        "evi":         round(evi_value, 4)
+    }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# __main__ 간소화 예시
+if __name__ == "__main__":
+    result = calculate_evi("330590", years=3)
+    print(result)
+    # 출력 예시: {'ticker': '005930', 'corp_name': '삼성전자', 'net_label': '당기순이익', 'evi': 0.1234}
+
+# # ──────────────────────────────────────────────────────────────────────────────
+# # 실행 예시 (__main__)
+# if __name__ == "__main__":
+#     # 1) Corp 가져오기
+#     ticker = "330590"
+#     corp_name, corp = get_corp(ticker)
+
+#     # 2) 조회 시작일 계산 (연 단위)
+#     bgn_de = compute_bgn_de(years=3)
+
+#     # 3) CIS DF
+#     cis_df = extract_cis_df(corp, bgn_de)
+#     # print(f"CIS rows: {len(cis_df)}")
+
+#     # 4) account_col & net_label
+#     account_col, net_label = find_net_income_label(cis_df)
+#     print("▶ net_label:", net_label)
+
+#     # 5) amount_cols
+#     amount_cols = find_amount_cols(cis_df)
+#     print("▶ amount_cols:", amount_cols)
+
+#     # 6) 시계열 추출
+#     series = extract_net_income_series(cis_df, account_col, net_label, amount_cols)
+#     print("▶ Net Income Series:")
+#     print(series)
+
+#     # 7) EVI 계산
+#     evi_value = compute_evi(series)
+#     print(f"{corp_name} ({ticker}) EVI: {evi_value:.4f}")
