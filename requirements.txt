@@ -18,6 +18,8 @@ pandas
 PyPDF2
 pymupdf
 camelot
+google-cloud-vision
+google-cloud-translate
 
 # Korean finance data clients
 pykrx

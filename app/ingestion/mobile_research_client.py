@@ -103,8 +103,8 @@ def download_reports(stock_code: str,
 
 if __name__ == "__main__":
     # 변수만 수정하여 사용
-    STOCK_CODE = "005930"                 # 종목 코드
-    DAYS_BACK  = 365                      # 과거 며칠치 리포트
+    STOCK_CODE = "247540"                 # 종목 코드
+    DAYS_BACK  = 100                      # 과거 며칠치 리포트
     PAGE_SIZE  = 20                       # 페이지당 아이템 수
     OUT_DIR    = os.path.join("data", "naver_pdfs") #파일 경로 설정
         # macOS 결과:  "data/naver_pdfs" # Windows 결과: "data\\naver_pdfs"
