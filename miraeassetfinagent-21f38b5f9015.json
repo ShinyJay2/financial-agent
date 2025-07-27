@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "miraeassetfinagent",
+  "private_key_id": "21f38b5f9015d670e88a28790bdaf62de583f858",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDHJeMx7WCiF/QY\nWUsvVcgEd7wvhxmH0EOcbmpLAstcTFY92e4qcRsZbek/I8FQLVUGYX+MvPMHJJrf\nXvs0meLCqtXc0ZtlGYyA4V/ZzS/C5csk0QAwqsOer38L7WrCbIh0v3imiROl5Yyt\nbu9yZhQ1tTWvhv49WcFms09BS96H4dffmUJGHqyBlVaFZ7yTGQPlH0f7H7VDqG4d\nxgOBR66snkz2fyMO8TpFyJkfqdq36UtfmkCT5xRTFeK/gY0OS/Uv3/IF+e4jT/CK\npvHDPgI3jvoLiKl3UZ8sIjFPJc/dPIJYpEM2+tcXBiw8+YpV3lVR6XtmUKa8FYs3\n9HVqWff1AgMBAAECggEADWfxxiXkbC0AH9Z8/vP/mbtkte9ait+8eW6eZavLvEwg\nPxwpUf6YtCrHuZoi1I6kq2ALWdJLaubuLQzEDNuyHegpquqKUzE32eIyFWOgbDaT\naQhPwrbwIcHPI+Ko3es3+WH9UXqnUbLk+DTgVhtkj2QCN+12tnMRF6SI+IyOr6do\nMY11eSzyDiwhgGQ9Fq8ioGj4Lrl6eneIw4rd54BV4zxpevCaNlQ1+2ZH0i4Yb7Fc\nOjqPFRH9TOiNl+A/NlGpzymI3AgaHljNkGOfj1SNimLPyWz1LOEJXgVwLwp1YcCI\n/ZE7sqQE+To6vHoH4NyPHquIHtNXqxZG8b2WlMFeeQKBgQDvEY8FStPxhOTrvS8T\nscrSZJXA3pNWVn0m0FclHcoQ/L31d0cnZh3Lrut0U0AZffiIZuc1KeIZGhzuYZ+j\n2373Ne8RF7EMIfsKraRhFF6wjR89wtPjUlt3FZ91j1nZZzly/qstBaS1UYKe0Ade\nVav0coT6GoY7Y9bJud/TO4m5HQKBgQDVQIwSYdDJv4DlxMxeQxUMQr9fD81VqOoK\n/l0ouovLo+BbtmW+LxrCCj/gzswLqHblM8EN9bcHngF4S39KBuVp+XTul5+yYfNu\ntWGdujIO7IXrtQrotXcT9rkmk+9GzSxRR03rzAJKffgwRBgWGhSVK6j9KaTgVLkh\n9gybbotauQKBgQCaktnMbDNZZ7m0CqBTtZMUMeD50W+mVUmaPP77iqVKEoCoI7Un\n7ki5l6G5ltJNKTv2xcIch7Ye0Nl/8DMN+S/Am2i1voHE/HuazecItej7cmOOxVfH\nFUr6VkrB8iv/+1QT3EHFXG7ApbE1CgCZp/8EkL8WDuxXnhgUWlAz/bzwqQKBgEys\n5LBHU1b28FWtKP5LiGncJgr8F4xRK7XAN6bJTDJwPd87+eEj9q8GGGmwcVVPwVAw\nB54JV0H54fVqz93CFQLBmvWetuDgrzKDLRIVPKJ5EL3rXnzFoocfEvt3/XSrmN+w\nj6fUto4qNO7FzRNFVVk9VYmRS6MNU3OOkIHigWChAoGBAM2tkbZUJFcfPkloy+8q\nKVjHx9MYM6aiNdbrb3rqImg5O1bkICntNEqceYH8q/O4C5FTtXDo3BEgMOdK7ZuC\ns4/kA9KqRJBC+EMFQjNnc33Lcu7itzaCp4br3QLBuAcpknWIMqh3EqKfws1tagc7\nxD7/tljGRGsX9DQOhjAs8Z6K\n-----END PRIVATE KEY-----\n",
+  "client_email": "finagent@miraeassetfinagent.iam.gserviceaccount.com",
+  "client_id": "117678052710188703985",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/finagent%40miraeassetfinagent.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
