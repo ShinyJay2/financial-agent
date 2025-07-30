@@ -1,6 +1,7 @@
 from pykrx import stock
 from functools import lru_cache
 from typing import Optional, Dict, List, Tuple
+import re
 
 @lru_cache(maxsize=1)
 def load_name_to_ticker() -> Dict[str, str]:
@@ -56,3 +57,31 @@ def all_companies() -> List[str]:
 def ticker_name_pairs() -> List[Tuple[str, str]]:
     """Return (ticker, name) tuples for all mapped companies."""
     return list(load_ticker_to_name().items())
+
+
+from functools import lru_cache
+from typing import Optional, Dict, List, Tuple
+from pykrx import stock
+
+# --- your existing name↔ticker loaders here (load_name_to_ticker, etc.) ---
+
+def extract_tickers_from_query(query: str) -> List[str]:
+    """
+    Greedy, longest-match extraction of tickers from Korean company names in the query.
+    E.g. "에코프로비엠 위험성" → ["247540"] only, not ["086520","247540"].
+    """
+    name_to_ticker = load_name_to_ticker()
+    # Sort names so that longer ones match before shorter substrings
+    sorted_names = sorted(name_to_ticker.keys(), key=len, reverse=True)
+
+    found = []
+    q = query  # we'll blank out matched spans as we go
+    for name in sorted_names:
+        idx = q.find(name)
+        if idx != -1:
+            found.append(name_to_ticker[name])
+            # replace the matched slice with spaces so we don't rematch substrings
+            q = q[:idx] + " " * len(name) + q[idx+len(name):]
+
+    return found
+

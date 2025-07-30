@@ -3,7 +3,7 @@ python-dotenv
 pydantic-settings
 
 # Chainlit UI/demo framework
-chainlit
+streamlit
 
 # Vector store & embeddings
 chromadb
@@ -17,12 +17,17 @@ python-docx
 pandas
 PyPDF2
 pymupdf
-camelot
+camelot-py
+SQLAlchemy<2.0,>=1.4
+google-cloud-vision
+google-cloud-translate
+
 
 # Korean finance data clients
 pykrx
 yfinance
 dart-fss>=0.2.2
+finance-datareader
 
 # Natural Language Processing & Machine Learning
 konlpy  # For Korean NLP, requires Java (e.g., JDK 11+)
