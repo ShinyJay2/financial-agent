@@ -17,21 +17,27 @@ class HyperClovaClient:
             "Content-Type": "application/json; charset=utf-8",
             "Accept": "application/json; charset=utf-8",
         }
-        payload = {
-            "messages": messages,
-            "topP": topP,
-            "topK": topK,
-            "maxTokens": maxTokens,
-            "temperature": temperature,
-            "repetitionPenalty": repetitionPenalty,
-            "stop": stop or [],
-            "includeAiFilters": includeAiFilters,
-            "seed": seed,
-            "stream": False,
-        }
 
-        resp = requests.post(f"{self.host}/testapp/v3/chat-completions/HCX-005",
-                             headers=headers, json=payload)
+
+        # new v3 OpenAI-compatible call (snake_case + model field) :contentReference[oaicite:0]{index=0}
+        payload = {
+            "messages":            messages,
+            "top_p":               topP,
+            "top_k":               topK,
+            "max_tokens":          maxTokens,
+            "temperature":         temperature,
+            "repetition_penalty":  repetitionPenalty,
+            "stop":                stop or [],
+            "include_ai_filters":  includeAiFilters,
+            "seed":                seed,
+            "stream":              False,
+        }
+        resp = requests.post(
+            f"{self.host}/testapp/v3/chat-completions/HCX-007",
+            headers=headers,
+            json=payload
+        )
+
         resp.raise_for_status()
         data = resp.json()
         logger.debug("HyperClova raw response → %s", data)

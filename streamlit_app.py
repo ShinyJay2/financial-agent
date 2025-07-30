@@ -16,63 +16,62 @@ if os.path.exists(css_file):
 # —————————————————————————————————————————————————————
 st.set_page_config(layout="wide", page_title="Korean Finance RAG Chat")
 
-# Initialize
-pipeline = RAGPipeline()
+# —————————————————————————————————————————————————————
+# Cache your RAG pipeline once per session
+# —————————————————————————————————————————————————————
+@st.cache_resource
+def load_pipeline():
+    return RAGPipeline()
 
-if "history" not in st.session_state:
-    st.session_state.history = []  # each: {"question", "answer", "sources"}
+pipeline = load_pipeline()
 
 # —————————————————————————————————————————————————————
-# Sidebar: history & reset
+# Initialize chat history
+# —————————————————————————————————————————————————————
+if "history" not in st.session_state:
+    st.session_state.history = []  # each: {"question","answer","sources"}
+
+# —————————————————————————————————————————————————————
+# Sidebar: conversation history & reset
 # —————————————————————————————————————————————————————
 with st.sidebar:
     st.title("💬 대화 기록")
     if st.button("새로운 질문"):
         st.session_state.history.clear()
-        st.experimental_rerun()
-
     for turn in st.session_state.history:
-        st.markdown(f"<div class='chat-bubble user'>{turn['question']}</div>",
-                    unsafe_allow_html=True)
-        st.markdown(f"<div class='chat-bubble assistant'>{turn['answer']}</div>",
-                    unsafe_allow_html=True)
+        st.markdown(f"<div class='chat-bubble user'>{turn['question']}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='chat-bubble assistant'>{turn['answer']}</div>", unsafe_allow_html=True)
         st.markdown("---")
-
     st.markdown("© 2025 Your Name")
 
 # —————————————————————————————————————————————————————
-# Main: input, display, sources
+# Main UI: input & display
 # —————————————————————————————————————————————————————
 st.title("📊 Korean Finance RAG Chat")
 
-# 1) Input
 query = st.chat_input("궁금한 것을 물어보세요…")
 if query:
-    try:
-        answer, sources = pipeline.answer_with_sources(
-            query, history=st.session_state.history
-        )
-        if "궁금하신 종목을 입력해주세요" in answer:
-            st.warning("종목 티커를 포함해 질문해 주세요 (예: AAPL에 대한 정보).")
-        else:
-            st.session_state.history.append({
-                "question": query,
-                "answer": answer,
-                "sources": sources
-            })
-            st.experimental_rerun()
-    except Exception as e:
-        st.error(f"오류가 발생했습니다: {str(e)}. 다시 시도해주세요.")
+    # 1) Retrieve & chunk first
+    with st.spinner("Retrieving relevant passages…"):
+        answer, sources = pipeline.answer_with_sources(query, history=st.session_state.history)
 
-# 2) Display last turn
+    # 2) Validate & append to history
+    if "궁금하신 종목을 입력해주세요" in answer:
+        st.warning("종목 티커를 포함해 질문해 주세요 (예: AAPL에 대한 정보).")
+    else:
+        st.session_state.history.append({
+            "question": query,
+            "answer": answer,
+            "sources": sources
+        })
+
+# 3) Display the latest response
 if st.session_state.history:
     last = st.session_state.history[-1]
-    # Assistant bubble
-    st.markdown(f"<div class='chat-bubble assistant'>{last['answer']}</div>",
-                unsafe_allow_html=True)
 
-    # Sources
+    st.markdown(f"<div class='chat-bubble assistant'>{last['answer']}</div>", unsafe_allow_html=True)
+
     st.markdown("### 📑 참조 자료")
     for doc_id, chunk in last["sources"]:
         with st.expander(f"출처: {doc_id}", expanded=False):
-            st.write(chunk[:500] + "..." if len(chunk) > 500 else chunk)  # Truncate long chunks
+            st.write(chunk[:500] + "…" if len(chunk) > 500 else chunk)
