@@ -1,7 +1,10 @@
 
+from datetime import date, timedelta
 import numpy as np
+
 from app.hedging.compute_returns import get_aligned_price_df, compute_daily_returns
 from app.hedging.regression import run_hedge_pipeline
+from app.utils.ticker_map import find_name_by_ticker
 
 def diversification_effect(
     base_ticker: str,       # 예: '247540'
@@ -45,33 +48,44 @@ def diversification_effect(
 
     return hedge_ticker, metrics
 
-
-def monte_carlo(base_ticker):
-    from datetime import date, timedelta
-    end   = date.today()
+def mc_practice(base_ticker: str) -> list:
+    """
+    1) run_hedge_pipeline으로 최적 헷지 티커 뽑고
+    2) diversification_effect 실행하여 리스크 감소(metrics) 계산
+    3) [base_name, hedge_name, metrics] 반환
+    """
+    # 1년(365일) 전부터 오늘까지 기간
+    end = date.today()
     start = end - timedelta(days=365)
+    start_str, end_str = start.strftime('%Y%m%d'), end.strftime('%Y%m%d')
 
-    df_neg = run_hedge_pipeline(base_ticker="247540", n_candidates=100, lookback_days=365)
-    hedge_ticker = str(df_neg.loc[0, "ticker"]) #삼양식품이 나옴
+    # ① 음(–)상관 헷지 후보 DataFrame
+    df_neg = run_hedge_pipeline(base_ticker, n_candidates=100, lookback_days=365)
+    if df_neg.empty:
+        raise ValueError("음상관 헷지 후보가 없습니다.")
 
-    # 예: regression 결과 첫번째 티커(003230)를 바로 넣어서 실행
-    hedge_ticker_result, result_df = diversification_effect(
+    # ② 최적 헷지 티커(첫 번째)
+    hedge_ticker = str(df_neg.loc[0, "ticker"])
+
+    # ③ 다각화 효과 계산
+    _, metrics = diversification_effect(
         base_ticker=base_ticker,
         hedge_ticker=hedge_ticker,
         weight_base=0.5,
         weight_hedge=0.5,
-        start_date=start.strftime('%Y%m%d'),
-        end_date=end.strftime('%Y%m%d')
+        start_date=start_str,
+        end_date=end_str
     )
-    return hedge_ticker_result, result_df
 
-# ── 실행 예시 ──
-if __name__=='__main__':
-# regression 함수임. 에코프로비엠 넣고 돌린 결과.
-    hedge_ticker_result, result_df = monte_carlo("247540")
-    print(f"선택된 헷지 티커: {hedge_ticker_result}")
-    print(result_df)
+    # ④ 종목명 매핑 후 결과 반환
+    base_name  = find_name_by_ticker(base_ticker)
+    hedge_name = find_name_by_ticker(hedge_ticker)
+    return [base_name, hedge_name, metrics]
 
+if __name__ == "__main__":
+    # 예시 실행
+    result = mc_practice("247540")
+    print(result)
 
     # 예시 출력
     # {

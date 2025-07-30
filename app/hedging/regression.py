@@ -6,6 +6,7 @@ import numpy as np
 
 from app.hedging.filtering import collect_risk_metrics
 from app.hedging.compute_returns import get_aligned_price_df, compute_daily_returns
+from app.utils.ticker_map import find_name_by_ticker
 from sklearn.linear_model import LinearRegression
 
 
@@ -87,6 +88,12 @@ def run_hedge_pipeline(
 
 if __name__ == "__main__":
     result = run_hedge_pipeline(base_ticker="247540", n_candidates=100, lookback_days=365)
-    print(result)
+    print(result) #이거 주석처리해도됨
+    ticker_list = result['ticker'].tolist()
+    name_list = []
+    for tic in ticker_list:
+        name = find_name_by_ticker(tic)
+        name_list.append(name)
+    print(name_list)
 
 
