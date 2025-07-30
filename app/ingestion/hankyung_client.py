@@ -69,53 +69,9 @@ def fetch_and_download_reports(stock_name: str,
                 print(f"⚠️ Error downloading PDF: {e}")
 
 if __name__ == "__main__":
-    STOCK_NAME = "삼성전자"
+    STOCK_NAME = "에코프로비엠"
     START_DATE = "2025-06-20"
     END_DATE   = "2025-07-20"
     SAVE_DIR   = os.path.join("data", "hankyung_pdfs")
 
     fetch_and_download_reports(STOCK_NAME, START_DATE, END_DATE, SAVE_DIR)
-
-
-### 아래가 pdf 추출 전에 했던 테스트 코드
-
-# import requests
-# from bs4 import BeautifulSoup
-
-# # 검색 파라미터 설정
-# base_url = "https://consensus.hankyung.com/analysis/list"
-# params = {
-#     "sdate": "2024-07-20",       # 시작일
-#     "edate": "2025-07-20",       # 종료일
-#     "now_page": 1,               # 첫 페이지
-#     "search_text": "삼성전자",    # 종목명
-#     "pagenum": 20                # 한 페이지에 보여질 리포트 수
-# }
-
-# # HTTP 요청
-# headers = {
-#     "User-Agent": "Mozilla/5.0"
-# }
-# response = requests.get(base_url, params=params, headers=headers)
-# soup = BeautifulSoup(response.text, "html.parser")
-
-# # 결과 확인용 추출 (첫 번째 테이블)
-# rows = soup.select("table tbody tr")
-
-# for row in rows:
-#     cols = row.find_all("td")
-#     if len(cols) < 5:
-#         continue
-#     작성일 = cols[0].text.strip()
-#     분류 = cols[1].text.strip()
-
-#     제목셀 = cols[2]
-#     제목 = 제목셀.text.strip()
-    
-#     a_tag = 제목셀.find("a")
-#     pdf_url = "https://consensus.hankyung.com" + a_tag["href"] if a_tag and a_tag.has_attr("href") else None
-
-    
-#     작성자 = cols[3].text.strip()
-#     증권사 = cols[4].text.strip()
-#     print(f"[{작성일}] ({분류}) {제목} - {작성자} / {증권사}/ PDF url: {pdf_url}")

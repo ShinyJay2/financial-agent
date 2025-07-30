@@ -600,8 +600,8 @@ def chunk_file(
         for c in chunks:
             if not c.strip():
                 continue
-            first_line = c.lstrip().split("\n", 1)[0]
-            if re.match(r"Compliance\s+notice", first_line, re.IGNORECASE):
+            first_line = c.splitlines()[0]
+            if re.match(r"^\s*Compliance\s+notice", first_line, re.IGNORECASE):
                 continue
             filtered.append(c)
 

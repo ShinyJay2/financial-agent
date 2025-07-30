@@ -61,6 +61,7 @@ def find_net_income_label(cis_df) -> Tuple[Tuple, str]:
     account 컬럼(label_ko)과 최신 금액 컬럼(연결·개별 모두 포함)을 반환
     후 당기순이익 추출
     """
+
     # account_col 찾기
     account_cols = [
         col for col in cis_df.columns
@@ -117,6 +118,7 @@ def extract_net_income_series(
     series = pd.Series(raw).apply(
         lambda x: float(str(x).replace(',', '')) if pd.notnull(x) else np.nan
     ).dropna()
+
     return series
 
 # 5) EVI 계산
@@ -129,6 +131,7 @@ def compute_evi(series: pd.Series) -> float:
     std_  = series.std(ddof=1)
     if mean_ == 0:
         return float('nan')
+
     return float(std_ / abs(mean_))
 
 def classify_evi(evi: float) -> str:
@@ -138,6 +141,7 @@ def classify_evi(evi: float) -> str:
     - 0.5 ≤ evi < 1.25: Medium
     - evi ≥ 1.25: High
     """
+ 
     if pd.isna(evi):
         return "Unknown"
     if evi < 0.5:
@@ -171,7 +175,7 @@ def calculate_evi(
     evi_value = compute_evi(series)
     # 8) 등급계산
     rank = classify_evi(evi_value)
-
+  
     return {
         "ticker":      ticker,
         "corp_name":   corp_name,

@@ -12,8 +12,13 @@ from app.router.clova_router import Executor
 from app.clients.hyperclova_client import ask_hyperclova
 from app.utils.ticker_map import extract_tickers_from_query, all_tickers
 from app.risk.volatility import get_volatility_info
+
 from app.risk.beta import get_beta_info
 from app.ingestion.krx_client import get_realtime_price
+from app.risk.d_e_r      import calculate_de_quarterly_growth
+from app.risk.evi        import calculate_evi
+from app.risk.foreign_organ import calculate_rank_days
+
 
 
 from app.chunking.chunker import (
@@ -199,10 +204,15 @@ class RAGPipeline:
         import math, re
         from app.rag_pipeline import date_from_id, parse_date_from_text
 
-        # 0) Build full_query with memory/context
-        mem_cands   = memory_collection.query([context], n_results=3)
-        mem_texts   = mem_cands.get("documents", [[]])[0]
-        full_query  = " ".join(mem_texts + [context, query]).strip()
+        # 0) Build full_query with memory/context (only if we actually have text)
+        mem_texts = []
+        if context and context.strip():
+            mem_cands = memory_collection.query(
+                query_texts=[context],
+                n_results=3
+            )
+            mem_texts = mem_cands.get("documents", [[]])[0]
+        full_query = " ".join(mem_texts + [context, query]).strip()
 
         # 1) BM25 shortlist
         bm25_ids = bm25_search(full_query, k=self.bm25_k)
@@ -295,6 +305,11 @@ class RAGPipeline:
         query: str,
         history: list[dict[str, Any]] | None = None
     ) -> str:
+        
+
+        if history is None:
+            history = []
+
         """
         Generates LLM-driven answers based on router-classified domains:
         - Domains: 위험 지표, 최신 종목 뉴스, 위험 헷징, 종목 위험 분석, 주식 정보
@@ -306,6 +321,7 @@ class RAGPipeline:
         from app.rag_pipeline import date_from_id
 
         # 1) Extract tickers (with history fallback)
+        print("▶ extract_tickers_from_query →", extract_tickers_from_query(query))
         tickers = extract_tickers_from_query(query)
         if not tickers and history:
             for turn in reversed(history):
@@ -338,8 +354,8 @@ class RAGPipeline:
         # 3) Build conversation context (last 3 turns)
         convo_ctx = " ".join(
             f"Q: {turn['question']} A: {turn['answer']}"
-            for turn in history[-3:] if history
-        ) if history else ""
+            for turn in history[-3:]
+        )
 
         # 4) Build retrieval query
         base_q = f"{' '.join(tickers)} {query}" if tickers else query
@@ -352,13 +368,18 @@ class RAGPipeline:
         # 6) Compute risk metrics (only for specific domains)
         metrics: dict[str, dict[str, Any]] = {}
         if tickers and (domain == "위험 지표" or domain == "종목 위험 분석"):
+
             t0 = tickers[0]
+
+            # 1) volatility:
             vol = get_volatility_info(t0)
             is_vol_elevated = vol.get("risk_level", "N/A").lower() in ("high", "severe") or vol["volatility"] > 0.20
             metrics["volatility"] = {
                 "label": f"연간 변동성: {vol['volatility']:.2%} (risk level: {vol.get('risk_level', 'N/A')})",
                 "elevated": is_vol_elevated
             }
+
+            # 2) beta:
             b = get_beta_info(t0)
             interp = f" ({b.get('interpretation')})" if b.get("interpretation") else ""
             is_beta_elevated = abs(b["beta"] - 1.0) > 0.20
@@ -366,36 +387,36 @@ class RAGPipeline:
                 "label": f"베타: {b['beta']:.2f}{interp}",
                 "elevated": is_beta_elevated
             }
-            metrics["de_ratio"] = {"label": "D/E 비율: N/A", "elevated": False}
-            metrics["evi"] = {"label": "EVI: N/A", "elevated": False}
-            metrics["ccr"] = {"label": "CCR: N/A", "elevated": False}
+            # 3) D/E ratio: quarterly growth & grade
+            de_info = calculate_de_quarterly_growth(t0)
+            # total_pct_change is the summed QoQ % change, de_ic_grade is its risk grade
+            de_val       = de_info["total_pct_change"]
+            de_grade     = de_info["de_ic_grade"]
+            is_de_elevated = de_grade in ("매우 높음", "높음")  # adjust per your grading scale
+            metrics["de_ratio"] = {
+                "label":    f"D/E 증감률 합계: {de_val:.2f}% (Grade: {de_grade})",
+                "elevated": is_de_elevated
+            }
 
-        # 7) Handle 주식 정보
-        if domain == "주식 정보":
-            if not tickers:
-                return "궁금하신 종목을 입력해주세요."
-            ticker = tickers[0]
-            live_price = get_realtime_price(ticker)
-            base_prompt = (
-                "본문의 정보들은 (출처: [출처번호])를 붙여 인용할 것.\n"
-                "주어진 자료 이외에 다른 추측이나 생각은 금지.\n"
-                f"현재 {ticker} 실시간 주가는 {live_price:,}원입니다. {query}에 대해 답변하세요.\n"
-            )
-            prefix = "".join(f"Q: {turn['question']}\nA: {turn['answer']}\n\n" for turn in history[-2:] if history)
-            return ask_hyperclova(prefix + base_prompt)
+            # 4) EVI (Earnings Volatility Index)
+            evi_info = calculate_evi(t0)
+            evi_val  = evi_info["evi"]
+            evi_rank = evi_info["rank"]
+            # assume ranks "High", "Medium", "Low"
+            is_evi_elevated = evi_rank.lower() == "high"
+            metrics["evi"] = {
+                "label":    f"EVI: {evi_val:.4f} (Rank: {evi_rank})",
+                "elevated": is_evi_elevated
+            }
 
-        # 8) Handle 위험 지표
-        if domain == "위험 지표":
-            if not tickers:
-                return "궁금하신 종목을 입력해주세요."
-            t0 = tickers[0]
-            header_lines = [
-                "(Retrieved from calculation)",
-                f"Ticker: {t0}",
-                f"- {metrics['volatility']['label']}",
-                f"- {metrics['beta']['label']}"
-            ]
-            return "\n".join(header_lines)
+            # 5) Foreign & institutional net‐flow risk
+            # calculate_rank_days returns (corp, corp_name, neg_days, level)
+            _, _, neg_days, flow_level = calculate_rank_days(t0)
+            is_flow_high = flow_level in ("중간", "높음")
+            metrics["foreign"] = {
+                "label":    f"외국인·기관 순매도 일수: {neg_days}일 (Level: {flow_level})",
+                "elevated": is_flow_high
+            }
 
         # 9) Prepare metric texts for 종목 위험 분석
         metric_texts = []
@@ -413,115 +434,313 @@ class RAGPipeline:
                 header_lines.append(f"- {metrics['volatility']['label']}")
             if metrics['beta']['elevated']:
                 header_lines.append(f"- {metrics['beta']['label']}")
+            if metrics['de_ratio']['elevated']:
+                header_lines.append(f"- {metrics['de_ratio']['label']}")
+            if metrics['evi']['elevated']:
+                header_lines.append(f"- {metrics['evi']['label']}")
+            if metrics['foreign']['elevated']:
+                header_lines.append(f"- {metrics['foreign']['label']}")
+                
             header = "\n".join(header_lines) + "\n\n"
 
+
+        from datetime import date
+        import re
+
+        # Helper function for citation formatting
+        def format_citation(txt: str, did: str, date_from_id, for_numbered=False) -> str:
+            if did == '계산값':
+                return "[출처:계산값]"
+            # Check if did starts with YYYYMMDD_ (date-based format)
+            if re.match(r"^\d{8}_", did):
+                try:
+                    date_obj = date_from_id(did)
+                    if date_obj is None:
+                        return "[출처:{did}]".format(did=did)
+                    return "[출처:{date}_{did}]".format(date=date_obj.strftime('%Y-%m-%d'), did=did)
+                except Exception:
+                    return "[출처:{did}]".format(did=did)
+            return "[출처:{did}]".format(did=did)  # Non-date-based file names
+
         # 10) Retrieval and rerank with citations
-        candidates = self.retrieve(retrieval_q)
-        text_to_src = {txt: src for src, txt in candidates}
+        candidates = self.retrieve(retrieval_q) if retrieval_q else []
+        text_to_src = {txt: did for did, txt in candidates}
         base_texts = [txt for _, txt in candidates]
-        combined = metric_texts + base_texts if domain in ("종목 위험 분석", "위험 지표") else base_texts
-        k = self.final_k * 2 if domain in ("종목 위험 분석", "위험 지표") else self.final_k
-        top_texts = rerank_with_cross_encoder(retrieval_q, combined, k)
-        numbered_lines = [
-            f"[{i}] {txt} [출처:{text_to_src.get(txt, '계산값')}]"
-            for i, txt in enumerate(top_texts, 1)
-        ]
-        numbered = "\n\n".join(numbered_lines)
+        metric_texts = []
+        if domain == "위험 지표" and tickers:
+            t0 = tickers[0]
+            if metrics and all(key in metrics for key in ['volatility', 'beta', 'de_ratio', 'evi', 'foreign']):
+                metric_texts = [
+                    f"(Calculated) {metrics['volatility']['label']}",
+                    f"(Calculated) {metrics['beta']['label']}",
+                    f"(Calculated) {metrics['de_ratio']['label']}",
+                    f"(Calculated) {metrics['evi']['label']}",
+                    f"(Calculated) {metrics['foreign']['label']}"
+                ]
+        combined = metric_texts + base_texts if domain == "위험 지표" else base_texts
+        k = (self.final_k * 2 if domain == "위험 지표" else self.final_k) if hasattr(self, 'final_k') else 3
+        top_texts = rerank_with_cross_encoder(retrieval_q, combined, k) if combined else []
+        if not top_texts:
+            numbered = "No relevant information found."
+        else:
+            numbered_lines = [
+                f"[{i}] {format_citation(txt, text_to_src.get(txt, '계산값'), date_from_id, for_numbered=True)}"
+                for i, txt in enumerate(top_texts, 1)
+            ]
+            numbered = "\n\n".join(numbered_lines)
+
+        # 7) Handle 주식 정보
+        if domain == "주식 정보":
+            if not tickers:
+                return "궁금하신 종목을 입력해주세요."
+            ticker = tickers[0]
+            try:
+                live_price = get_realtime_price(ticker)
+            except Exception:
+                live_price = "N/A"
+            prefix = "".join(f"Q: {turn['question']}\nA: {turn['answer']}\n\n" for turn in history[-2:]) if history else ""
+            base_prompt = (
+                "본문의 정보들은 [출처 파일명] 형식으로 정확히 인용할 것. [출처 파일명]은 문서 ID (날짜가 포함된 경우 YYYY-MM-DD_문서ID, 그렇지 않은 경우 문서ID 그대로)로, 텍스트 없이 문서 ID만 표시해야 합니다.\n"
+                "주어진 자료 이외에 다른 추측이나 생각은 금지.\n"
+                f"현재 {ticker} 실시간 주가는 {live_price:,}원입니다. {query}에 대해 답변하세요.\n"
+                "- 답변 본문에 인용된 모든 출처는 [출처 파일명] 형식으로, 문서 ID만 표시할 것.\n"
+                "- 답변 마지막에 아래 제공된 **출처 목록**을 번호와 함께 정확히 그대로 포함할 것. 수정하거나 재구성하지 말고, 제공된 형식을 엄격히 따를 것.\n\n"
+                f"**출처 목록**\n{numbered}"
+            ) if live_price != "N/A" else (
+                "본문의 정보들은 [출처 파일명] 형식으로 정확히 인용할 것. [출처 파일명]은 문서 ID (날짜가 포함된 경우 YYYY-MM-DD_문서ID, 그렇지 않은 경우 문서ID 그대로)로, 텍스트 없이 문서 ID만 표시해야 합니다.\n"
+                "주어진 자료 이외에 다른 추측이나 생각은 금지.\n"
+                f"실시간 주가 정보를 가져올 수 없습니다. {query}에 대해 답변하세요.\n"
+                "- 답변 본문에 인용된 모든 출처는 [출처 파일명] 형식으로, 문서 ID만 표시할 것.\n"
+                "- 답변 마지막에 아래 제공된 **출처 목록**을 번호와 함께 정확히 그대로 포함할 것. 수정하거나 재구성하지 말고, 제공된 형식을 엄격히 따를 것.\n\n"
+                f"**출처 목록**\n{numbered}"
+            )
+            candidates = self.retrieve(f"{ticker} {query}") if query and ticker else []
+            text_to_src = {txt: did for did, txt in candidates}
+            candidate_texts = [txt for _, txt in candidates][:3]
+            if not candidate_texts:
+                citations = "No relevant information found."
+            else:
+                numbered_lines = [
+                    f"[{i}] {format_citation(txt, text_to_src.get(txt, '계산값'), date_from_id, for_numbered=True)}"
+                    for i, txt in enumerate(candidate_texts, 1)
+                ]
+                citations = "\n".join(numbered_lines)
+            response = ask_hyperclova(prefix + base_prompt + "\n\n" + citations + f"\n\nQ: {query}\nA:")
+            # Fallback: Append citation list if not included
+            # Enhanced fallback: also catch replies that end with a generic “[1] …” list
+            lines = [L for L in response.splitlines() if L.strip()]
+            last_line = lines[-1] if lines else ""
+            if numbered != "No relevant information found.":
+                needs_fallback = (
+                    "**출처 목록**" not in response
+                    or re.match(r"^\[\s*1\s*\]", last_line)
+                )
+                if needs_fallback:
+                    response = response.rstrip() + f"\n\n**출처 목록**\n{numbered}"
+            return response
+
+
+        # 8) Handle 위험 지표
+        if domain == "위험 지표":
+            if not tickers:
+                return "궁금하신 종목을 입력해주세요."
+            t0 = tickers[0]
+            if not metrics or not all(key in metrics for key in ['volatility', 'beta', 'de_ratio', 'evi', 'foreign']):
+                return "메트릭 정보를 가져올 수 없습니다."
+            header_lines = [
+                "(Retrieved from calculation)",
+                f"Ticker: {t0}",
+                f"- {metrics['volatility']['label']}",
+                f"- {metrics['beta']['label']}",
+                f"- {metrics['de_ratio']['label']}",
+                f"- {metrics['evi']['label']}",
+                f"- {metrics['foreign']['label']}",
+            ]
+            return "\n".join(header_lines)
 
         # 11) Handle 최신 종목 뉴스
         if domain == "최신 종목 뉴스":
             news_chunks = [
-                (did, txt) for did, txt in self.retrieve(retrieval_q)
-                if re.match(r"^\d{8}_", did)
+                (did, txt) for did, txt in self.retrieve(retrieval_q) if retrieval_q and re.match(r"^\d{8}_", did)
             ]
-            news_chunks.sort(key=lambda x: date_from_id(x[0]) or date.min, reverse=True)
+            # Sort by date if possible, otherwise by did
+            try:
+                news_chunks.sort(key=lambda x: date_from_id(x[0]) or date.min, reverse=True)
+            except Exception:
+                news_chunks.sort(key=lambda x: x[0], reverse=True)
             top5 = news_chunks[:5]
-            numbered_recent = [
-                f"{idx}. {date_from_id(did).strftime('%Y-%m-%d')} — {txt.splitlines()[0]} [출처:{did}]"
-                for idx, (did, txt) in enumerate(top5, 1)
-            ]
+            if not top5:
+                numbered_recent = ["No recent news found."]
+            else:
+                numbered_recent = []
+                for idx, (did, txt) in enumerate(top5, 1):
+                    if re.match(r"^\d{8}_", did):
+                        try:
+                            date_obj = date_from_id(did)
+                            date_str = date_obj.strftime('%Y-%m-%d') if date_obj else "Unknown"
+                        except Exception:
+                            date_str = "Unknown"
+                    else:
+                        date_str = "Unknown"
+                    numbered_recent.append(
+                        f"{idx}. {date_str} — {txt.splitlines()[0]} [출처:{date_str}_{did if date_str != 'Unknown' else did}]"
+                    )
             recent_tmpl = (
-                "본문의 정보들은 (출처: [출처번호])를 붙여 인용할 것.\n"
+                "본문의 정보들은 [출처 파일명] 형식으로 정확히 인용할 것. [출처 파일명]은 문서 ID (날짜가 포함된 경우 YYYY-MM-DD_문서ID, 그렇지 않은 경우 문서ID 그대로)로, 텍스트 없이 문서 ID만 표시해야 합니다.\n"
                 "주어진 자료 이외에 다른 추측이나 생각은 금지.\n"
                 f"아래는 '{query}'에 대한 최신 뉴스 5건입니다.\n"
                 "- 각 항목에 **날짜(YYYY-MM-DD)**, **제목**, **출처 ID**를 정확히 포함해주세요.\n\n"
                 + "\n".join(numbered_recent) +
                 f"\n\n위 형식에 맞춰 핵심 내용을 간결히 요약해 설명해주세요.\n"
-                f"\nQ: {query}\nA:"
+                "- 답변 본문에 인용된 모든 출처는 [출처 파일명] 형식으로, 문서 ID만 표시할 것.\n"
+                "- 답변 마지막에 아래 제공된 **출처 목록**을 번호와 함께 정확히 그대로 포함할 것. 수정하거나 재구성하지 말고, 제공된 형식을 엄격히 따를 것.\n\n"
+                f"**출처 목록**\n{numbered}"
             )
-            prefix = "".join(f"Q: {turn['question']}\nA: {turn['answer']}\n\n" for turn in history[-2:] if history)
-            return ask_hyperclova(prefix + recent_tmpl)
+            prefix = "".join(f"Q: {turn['question']}\nA: {turn['answer']}\n\n" for turn in history[-2:]) if history else ""
+            response = ask_hyperclova(prefix + recent_tmpl + f"\n\nQ: {query}\nA:")
+            # Fallback: Append citation list if not included
+            # Enhanced fallback: also catch replies that end with a generic “[1] …” list
+            lines = [L for L in response.splitlines() if L.strip()]
+            last_line = lines[-1] if lines else ""
+            if numbered != "No relevant information found.":
+                needs_fallback = (
+                    "**출처 목록**" not in response
+                    or re.match(r"^\[\s*1\s*\]", last_line)
+                )
+                if needs_fallback:
+                    response = response.rstrip() + f"\n\n**출처 목록**\n{numbered}"
+            return response
+
 
         # 12) Build risk analysis template for 종목 위험 분석
         def cat_chunks(cat: str, n: int = 3) -> str:
-            chunk_list = self.retrieve(f"{query} {cat}", context=convo_ctx)
-            selected   = chunk_list[:n]
-            out        = ""
+            chunk_list = self.retrieve(f"{query} {cat}", context=convo_ctx) if query and convo_ctx else []
+            selected = chunk_list[:n]
+            out = ""
             for did, txt in selected:
-                # do the newline‑to‑space replacement before the f‑string
                 snippet = txt.replace("\n", " ")[:200]
-                out += f"- ({did}) {snippet}...\n"
+                if re.match(r"^\d{8}_", did):
+                    try:
+                        date_obj = date_from_id(did)
+                        date_str = date_obj.strftime('%Y-%m-%d') if date_obj else "Unknown"
+                    except Exception:
+                        date_str = "Unknown"
+                else:
+                    date_str = "Unknown"
+                out += f"- ({date_str}_{did if date_str != 'Unknown' else did}) {snippet}...\n"
             return out
 
+        if domain == "종목 위험 분석":
+            if not tickers:
+                return "궁금하신 종목을 입력해주세요."
+            t0 = tickers[0]
+            header_lines = ["(Retrieved from calculation)", f"Ticker: {t0}"]
+            if metrics and all(key in metrics for key in ['volatility', 'beta', 'de_ratio', 'evi', 'foreign']):
+                for metric in ["volatility", "beta", "de_ratio", "evi", 'foreign']:
+                    if metrics[metric].get("elevated", False):
+                        header_lines.append(f"- {metrics[metric]['label']}")
+            header = "\n".join(header_lines) + "\n\n"
+            risk_tmpl = (
+                "본문의 정보들은 [출처 파일명] 형식으로 정확히 인용할 것. [출처 파일명]은 문서 ID (날짜가 포함된 경우 YYYY-MM-DD_문서ID, 그렇지 않은 경우 문서ID 그대로)로, 텍스트 없이 문서 ID만 표시해야 합니다.\n"
+                "주어진 자료 이외에 다른 추측이나 생각은 금지.\n"
+                f"아래에 제공된 증거를 바탕으로 '{query}'의 위험 요인을 다섯 가지 카테고리로 나누어 한국어로 상세히 분석해주세요.\n"
+                "- 각 섹션별로 **최소 100자 이상** 작성할 것.\n"
+                "- 각 섹션 제목은 반드시 다음과 같이 정확히 사용할 것:\n"
+                "  1. 시장 리스크\n"
+                "  2. 재무 리스크\n"
+                "  3. 사업 리스크\n"
+                "  4. 법률/운영 리스크\n"
+                "  5. ESG/평판 리스크\n"
+                "- 위 외에 다른 표현 금지.\n"
+                "- 모든 자료와 숫자는 [출처 파일명] 형식으로, 문서 ID만 표시할 것.\n"
+                "- 가능한 한 최신 정보를 우선 반영하세요.\n"
+                "- 답변 마지막에 아래 제공된 **출처 목록**을 번호와 함께 정확히 그대로 포함할 것. 수정하거나 재구성하지 말고, 제공된 형식을 엄격히 따를 것.\n\n"
+                f"1. 시장 리스크\n{cat_chunks('시장 리스크', n=3)}\n"
+                f"2. 재무 리스크\n{cat_chunks('재무 리스크', n=3)}\n"
+                f"3. 사업 리스크\n{cat_chunks('사업 리스크', n=3)}\n"
+                f"4. 법률/운영 리스크\n{cat_chunks('운영 리스크', n=3)}\n"
+                f"5. ESG/평판 리스크\n{cat_chunks('ESG 평판 리스크', n=3)}\n"
+                f"\n\n**출처 목록**\n{numbered}\n\nQ: {query}\nA:"
+            )
+            prefix = "".join(f"Q: {turn['question']}\nA: {turn['answer']}\n\n" for turn in history[-2:]) if history else ""
+            response = ask_hyperclova(prefix + risk_tmpl)
+            # Fallback: Append citation list if not included
+            # Enhanced fallback: also catch replies that end with a generic “[1] …” list
+            lines = [L for L in response.splitlines() if L.strip()]
+            last_line = lines[-1] if lines else ""
+            if numbered != "No relevant information found.":
+                needs_fallback = (
+                    "**출처 목록**" not in response
+                    or re.match(r"^\[\s*1\s*\]", last_line)
+                )
+                if needs_fallback:
+                    response = response.rstrip() + f"\n\n**출처 목록**\n{numbered}"
+            return response
 
-        risk_tmpl = (
-            "본문의 정보들은 (출처: [출처번호])를 붙여 인용할 것.\n"
-            "주어진 자료 이외에 다른 추측이나 생각은 금지.\n"
-            f"아래에 제공된 증거를 바탕으로 '{query}'의 위험 요인을 다섯 가지 카테고리로 나누어 한국어로 상세히 분석해주세요.\n"
-            "- 각 섹션별로 **최소 100자 이상** 작성할 것.\n"
-            "- 각 섹션 제목은 반드시 다음과 같이 정확히 사용할 것:\n"
-            "- 본문 중간중간 (출처: [출처번호])를 붙여 인용할 것.\n\n"
-            "  1. 시장 리스크\n"
-            "  2. 재무 리스크\n"
-            "  3. 사업 리스크\n"
-            "  4. 법률/운영 리스크\n"
-            "  5. ESG/평판 리스크\n"
-            "- 위 외에 다른 표현 금지\n"
-            "- 모든 자료와 숫자는 [출처번호] 형태로 표시해주세요.\n"
-            "- 가능한 한 최신 정보를 우선 반영하세요.\n\n"
-            f"1. 시장 리스크\n{cat_chunks('시장 리스크', n=3)}\n"
-            f"2. 재무 리스크\n{cat_chunks('재무 리스크', n=3)}\n"
-            f"3. 사업 리스크\n{cat_chunks('사업 리스크', n=3)}\n"
-            f"4. 법률/운영 리스크\n{cat_chunks('운영 리스크', n=3)}\n"
-            f"5. ESG/평판 리스크\n{cat_chunks('ESG 평판 리스크', n=3)}\n"
-            f"\n\n{numbered}\n\nQ: {query}\nA:"
-        )
 
-        # 13) Handle 위험 헷징 and unclassified queries
+        # 13) Handle 위험 헷징
         if domain == "위험 헷징":
             base_prompt = (
-                "본문의 정보들은 (출처: [출처번호])를 붙여 인용할 것.\n"
+                "본문의 정보들은 [출처 파일명] 형식으로 정확히 인용할 것. [출처 파일명]은 문서 ID (날짜가 포함된 경우 YYYY-MM-DD_문서ID, 그렇지 않은 경우 문서ID 그대로)로, 텍스트 없이 문서 ID만 표시해야 합니다.\n"
                 "주어진 자료 이외에 다른 추측이나 생각은 금지.\n"
                 f"{query}에 대해 주어진 자료를 바탕으로 답변하세요.\n"
-                f"{numbered}"
+                "- 답변 본문에 인용된 모든 출처는 [출처 파일명] 형식으로, 문서 ID만 표시할 것.\n"
+                "- 답변 마지막에 아래 제공된 **출처 목록**을 번호와 함께 정확히 그대로 포함할 것. 수정하거나 재구성하지 말고, 제공된 형식을 엄격히 따를 것.\n\n"
+                f"**출처 목록**\n{numbered}"
             )
-            prefix = "".join(f"Q: {turn['question']}\nA: {turn['answer']}\n\n" for turn in history[-2:] if history)
-            return ask_hyperclova(prefix + base_prompt)
+            prefix = "".join(f"Q: {turn['question']}\nA: {turn['answer']}\n\n" for turn in history[-2:]) if history else ""
+            response = ask_hyperclova(prefix + base_prompt + f"\n\nQ: {query}\nA:")
+            # Fallback: Append citation list if not included
+            # Enhanced fallback: also catch replies that end with a generic “[1] …” list
+            lines = [L for L in response.splitlines() if L.strip()]
+            last_line = lines[-1] if lines else ""
+            if numbered != "No relevant information found.":
+                needs_fallback = (
+                    "**출처 목록**" not in response
+                    or re.match(r"^\[\s*1\s*\]", last_line)
+                )
+                if needs_fallback:
+                    response = response.rstrip() + f"\n\n**출처 목록**\n{numbered}"
+            return response
+
 
         # 14) Assemble prompt for unclassified queries
-        prefix = "".join(f"Q: {turn['question']}\nA: {turn['answer']}\n\n" for turn in history[-2:] if history)
+        prefix = "".join(f"Q: {turn['question']}\nA: {turn['answer']}\n\n" for turn in history[-2:]) if history else ""
         if domain not in ["위험 지표", "최신 종목 뉴스", "위험 헷징", "종목 위험 분석", "주식 정보"]:
             base_prompt = (
-                "본문의 정보들은 (출처: [출처번호])를 붙여 인용할 것.\n"
+                "본문의 정보들은 [출처 파일명] 형식으로 정확히 인용할 것. [출처 파일명]은 문서 ID (날짜가 포함된 경우 YYYY-MM-DD_문서ID, 그렇지 않은 경우 문서ID 그대로)로, 텍스트 없이 문서 ID만 표시해야 합니다.\n"
                 "주어진 자료 이외에 다른 추측이나 생각은 금지.\n"
                 f"{query}에 대해 주어진 자료를 바탕으로 답변하세요.\n"
-                f"{numbered}"
+                "- 답변 본문에 인용된 모든 출처는 [출처 파일명] 형식으로, 문서 ID만 표시할 것.\n"
+                "- 답변 마지막에 아래 제공된 **출처 목록**을 번호와 함께 정확히 그대로 포함할 것. 수정하거나 재구성하지 말고, 제공된 형식을 엄격히 따를 것.\n\n"
+                f"**출처 목록**\n{numbered}"
             )
-            return ask_hyperclova(prefix + base_prompt)
+            response = ask_hyperclova(prefix + base_prompt + f"\n\nQ: {query}\nA:")
+            # Fallback: Append citation list if not included
+            # Enhanced fallback: also catch replies that end with a generic “[1] …” list
+            lines = [L for L in response.splitlines() if L.strip()]
+            last_line = lines[-1] if lines else ""
+            if numbered != "No relevant information found.":
+                needs_fallback = (
+                    "**출처 목록**" not in response
+                    or re.match(r"^\[\s*1\s*\]", last_line)
+                )
+                if needs_fallback:
+                    response = response.rstrip() + f"\n\n**출처 목록**\n{numbered}"
+            return response
 
-        # 15) Assemble prompt for classified domains
-        prompt = prefix + risk_tmpl if domain == "종목 위험 분석" else prefix + numbered + f"\n\nQ: {query}\nA:"
 
-        # 16) Call LLM
+        # 15) Call LLM and return response
+        prompt = prefix + risk_tmpl if domain == "종목 위험 분석" else prefix + base_prompt if domain in ["주식 정보", "위험 헷징", "최신 종목 뉴스"] or domain not in ["위험 지표"] else prefix + numbered + f"\n\nQ: {query}\nA:"
         response = ask_hyperclova(prompt)
 
-        # 17) Upsert memory for future retrieval
+        # 16) Upsert memory for future retrieval
         if history:
             mem_id = f"mem_{len(history)-1}"
             mem_text = f"User: {history[-1]['question']} Assistant: {history[-1]['answer']}"
             memory_collection.upsert(ids=[mem_id], documents=[mem_text])
 
-        # 18) Return response
+        # 17) Return response
         return (header + response) if domain in ("종목 위험 분석", "위험 지표") else response
     
 

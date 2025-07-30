@@ -120,7 +120,7 @@ def extract_clean_text_from_article(html: str) -> str:
 
 if __name__ == "__main__":
     STOCK_CODE = "247540"
-    DAYS_BACK  = 50
+    DAYS_BACK  = 1
     PAGE_SIZE  = 20
     news_cnt = 0
     

@@ -3,6 +3,8 @@ from typing import Optional, List
 import time
 from uuid import uuid4
 import requests
+import os
+from pathlib import Path
 
 import numpy as np
 from sklearn.preprocessing import minmax_scale
@@ -18,10 +20,28 @@ from app.config import settings
 # ───────────────────────────────────────────────
 
 # Directory for on-disk persistence (override via CHROMA_DB_DIR)
-chroma_dir = os.getenv("CHROMA_DB_DIR", "./chroma_db")
+#chroma_dir = os.getenv("CHROMA_DB_DIR", "./chroma_db")
 
 # Instantiate the new persistent client API (uses SQLite/duckdb under the hood)
-client = chromadb.PersistentClient(path=chroma_dir)
+#client = chromadb.PersistentClient(path=chroma_dir)
+
+# 1) Compute project root (two levels up from this file)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+# 2) Read env var or default under the repo root
+env_dir = os.getenv("CHROMA_DB_DIR", "chroma_db")
+# Make it absolute relative to project root if needed
+persist_dir = Path(env_dir)
+if not persist_dir.is_absolute():
+    persist_dir = PROJECT_ROOT / persist_dir
+persist_dir = persist_dir.resolve()
+
+# 3) Create the folder if it doesn’t exist
+persist_dir.mkdir(parents=True, exist_ok=True)
+
+# 4) Instantiate the persistent client with an absolute path
+client = chromadb.PersistentClient(path=str(persist_dir))
+
 
 # Use OpenAIEmbeddingFunction for OpenAI embeddings
 dense_collection = client.get_or_create_collection(
