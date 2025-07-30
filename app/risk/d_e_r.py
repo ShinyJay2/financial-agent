@@ -43,7 +43,7 @@ def extract_bs_df(corp, bgn_de: str, end_de: Optional[str] = None, report_tp: Op
 
     try:
         fs    = extract_financial_statements(corp, bgn_de=bgn_de, end_de=end_de ,report_tp=report_tp, last_report_only=last_report_only)
-        # print(f"fs 전체보기: {fs}")
+        print(f"fs 전체보기: {fs}")
         bs_df = fs["bs"]
         # print(f"bs_df 전체보기: {bs_df}")
         if bs_df is None:
@@ -185,8 +185,8 @@ def calculate_de_quarterly_growth(
     
     manual_date_ranges = [
     # ("20220101", "20221231"),  # 2022년
-    ("20230101", "20231231"),  # 2023년
-    ("20240101", "20241231"),  # 2024년
+    # ("20230101", "20231231"),  # 2023년
+    # ("20240101", "20241231"),  # 2024년
     ("20250101", "20250729"),  # 2025년 (종료일은 7월 29일)
     ]
     
@@ -266,6 +266,6 @@ def calculate_de_quarterly_growth(
     }
 
 if __name__ == "__main__":
-    print(calculate_de_quarterly_growth("008770"))
+    print(calculate_de_quarterly_growth("047050"))
 
 

@@ -37,33 +37,30 @@ def extract_financial_statements(
 
 def extract_cis_df(corp, bgn_de: str) -> pd.DataFrame:
     """
-     포괄 손익계산서(cis) DataFrame을 꺼냄.
-    연결재무제표 우선 시도, 실패 시 개별재무제표로 fallback.
+     (포괄) 손익계산서(cis) DataFrame을 꺼내고 없으면 손익계산서(is)를 꺼냄
     """
-    # ① 연결재무제표 시도
+    # 재무제표 전체 추출 시도
     fs   = extract_financial_statements(corp, bgn_de=bgn_de, report_tp="annual", separate=True)
-    # print("fs 전체:",fs)
     
+    cis_flag = True
     cis_df = fs["cis"]
     if cis_df is None or cis_df.empty:
-        # print("CIS 데이터 없음 → IS로 폴백")
+        print("CIS 데이터 없음 → IS로 폴백")
+        cis_flag = False
         cis_df = fs['is']
 
-    # 4) 그래도 없으면 에러
+    # 그래도 없으면 에러
     if cis_df is None or cis_df.empty:
         raise ValueError("포괄손익계산서(cis) 및 손익계산서(is) 데이터가 모두 없습니다.")
 
-    # print(f"📄 선택된 손익계산서 로우 수: {len(cis_df)}")
     return cis_df
 
 
 def find_net_income_label(cis_df) -> Tuple[Tuple, str]:
     """
     account 컬럼(label_ko)과 최신 금액 컬럼(연결·개별 모두 포함)을 반환
+    후 당기순이익 추출
     """
-    # print("🧩 모든 컬럼 목록:")
-    # for col in cis_df.columns:
-    #     print(col)
     # account_col 찾기
     account_cols = [
         col for col in cis_df.columns
@@ -75,11 +72,10 @@ def find_net_income_label(cis_df) -> Tuple[Tuple, str]:
 
     # net_label 분기
     labels = cis_df[account_col].unique().tolist()
-    if '당기순이익' in labels:
-        net_label = '당기순이익'
-    elif '당기순이익(손실)' in labels:
-        net_label = '당기순이익(손실)'
-    else:
+    pattern = re.compile(r"^당기순이익(?:\(손실\))?$")
+
+    net_label = next((lbl for lbl in labels if pattern.match(lbl)), None)
+    if not net_label:
         raise ValueError("당기순이익 계정명이 없습니다.")
 
     return account_col, net_label
