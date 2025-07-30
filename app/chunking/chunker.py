@@ -12,7 +12,7 @@ import logging
 import json
 from typing import Any, List
 import fitz  # PyMuPDF for fast PDF text extraction
-import camelot  # for table extraction from PDFs
+# import camelot  # for table extraction from PDFs
 from bs4 import BeautifulSoup
 import tiktoken
 import docx

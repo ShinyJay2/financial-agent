@@ -183,7 +183,7 @@ def calculate_evi(
 # ──────────────────────────────────────────────────────────────────────────────
 # __main__ 간소화 예시
 if __name__ == "__main__":
-    result = calculate_evi("023530", years=3)
+    result = calculate_evi("247540", years=3)
     print(result)
     # 출력 예시: {'ticker': '005930', 'corp_name': '삼성전자', 'net_label': '당기순이익', 'evi': 0.1234}
 
