@@ -6,6 +6,7 @@ __pycache__/
 .venv/
 venv/
 finagent/
+finagent2/
 
 
 # Environment variables

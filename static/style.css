@@ -1,0 +1,56 @@
+/* static/style.css */
+
+/* Hide Streamlit header & footer */
+header, footer, .css-1lsmgbg.e1fqkh3o3 {
+  visibility: hidden;
+  height: 0;
+}
+
+/* Page background */
+.block-container {
+  background-color: #f7fafc;
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  padding: 1rem;
+}
+
+/* Chat bubble common */
+.chat-bubble {
+  max-width: 75%;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 0;
+  border-radius: 1rem;
+  line-height: 1.4;
+  word-wrap: break-word;
+}
+
+/* User bubble (right-aligned) */
+.chat-bubble.user {
+  background: #dcf8c6;
+  margin-left: auto;
+}
+
+/* Assistant bubble (left-aligned) */
+.chat-bubble.assistant {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+/* Source expander header */
+.stExpander .streamlit-expanderHeader {
+  font-weight: 600;
+  color: #2d3748;
+}
+
+/* Source expander content */
+.stExpander .streamlit-expanderContent {
+  background: #edf2f7;
+  border-left: 3px solid #48bb78;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  white-space: pre-wrap;
+}

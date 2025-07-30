@@ -8,7 +8,7 @@ class HyperClovaClient:
         self.host = "https://clovastudio.stream.ntruss.com"
         self.api_key = settings.HYPERCLOVA_API_KEY
 
-    def chat(self, messages, topP=0.8, topK=0, maxTokens=256,
+    def chat(self, messages, topP=0.8, topK=0, maxTokens=8192,
              temperature=0.5, repetitionPenalty=1.1,
              stop=None, includeAiFilters=True, seed=0):
         headers = {

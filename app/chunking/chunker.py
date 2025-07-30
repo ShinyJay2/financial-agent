@@ -9,7 +9,8 @@ from pathlib import Path
 import concurrent.futures
 from functools import lru_cache
 import logging
-
+import json
+from typing import Any, List
 import fitz  # PyMuPDF for fast PDF text extraction
 import camelot  # for table extraction from PDFs
 from bs4 import BeautifulSoup
@@ -159,16 +160,38 @@ def sliding_window_chunk(
         start += (max_tokens - overlap)
     return chunks
 
+
 def chunk_json(raw_json: str, records_per_chunk: int = 10) -> List[str]:
-    data = json.loads(raw_json)
-    chunks = []
-    for i in range(0, len(data), records_per_chunk):
-        batch = data[i : i + records_per_chunk]
-        text = "\n\n".join(
-            json.dumps(obj, ensure_ascii=False, indent=2) for obj in batch
-        )
-        chunks.append(text)
-    return chunks
+    """
+    Splits a JSON payload into text chunks.
+     - If the top‐level object is a dict: return exactly one chunk.
+     - If it's a list: split into slices of up to records_per_chunk.
+     - On invalid JSON: return [].
+    """
+    try:
+        data: Any = json.loads(raw_json)
+    except json.JSONDecodeError:
+        return []
+
+    # Single‐object JSON → one chunk
+    if isinstance(data, dict):
+        return [json.dumps(data, ensure_ascii=False)]
+
+    # List JSON → batch into multiple chunks
+    if isinstance(data, list):
+        chunks: List[str] = []
+        for i in range(0, len(data), records_per_chunk):
+            batch = data[i : i + records_per_chunk]
+            text = "\n\n".join(
+                json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+                for obj in batch
+            )
+            chunks.append(text)
+        return chunks
+
+    # Any other type → stringify once
+    return [json.dumps(data, ensure_ascii=False)]
+
 
 def chunk_csv(raw_csv: str, rows_per_chunk: int = 50) -> List[str]:
     reader = csv.reader(io.StringIO(raw_csv))
