@@ -2,6 +2,7 @@
 
 from datetime import date, timedelta
 import pandas as pd
+import numpy as np
 
 from app.hedging.filtering import collect_risk_metrics
 from app.hedging.compute_returns import get_aligned_price_df, compute_daily_returns
@@ -46,7 +47,6 @@ def compute_candidate_regressions(
         })
     return pd.DataFrame(results).sort_values("corr")
 
-
 def run_hedge_pipeline(
     base_ticker: str,
     n_candidates: int = 100,
@@ -62,7 +62,7 @@ def run_hedge_pipeline(
     """
     # 1) 리스크 필터링
     df_metrics = collect_risk_metrics(n_candidates)
-    print(f"[Debug] 후보 리스크 통과 종목 수: {len(df_metrics)}") 
+    # print(f"[Debug] 후보 리스크 통과 종목 수: {len(df_metrics)}") 
     candidates = df_metrics["ticker"].tolist()
 
     # 2) 기간 계산
@@ -74,20 +74,19 @@ def run_hedge_pipeline(
     # 3) 가격 정렬 및 수익률 계산
     price_df   = get_aligned_price_df(base_ticker, candidates, start_str, end_str)
     returns_df = compute_daily_returns(price_df)
-    print(f"[Debug] returns_df shape: {returns_df.shape}")         # ← 여기
+    # print(f"[Debug] returns_df shape: {returns_df.shape}")         # ← 여기
 
     # 4) 회귀·상관분석
     df_reg = compute_candidate_regressions(returns_df, base_ticker)
 
     # 5) 음(–)상관 필터링
     df_neg = df_reg[df_reg["corr"] < 0].reset_index(drop=True)
-    print(f"[Debug] 음상관 종목 수: {len(df_neg)}")  
+    # print(f"[Debug] 음상관 종목 수: {len(df_neg)}")  
     return df_neg
 
 
 if __name__ == "__main__":
-    result = run_hedge_pipeline(base_ticker="247540", n_candidates=200, lookback_days=100)
+    result = run_hedge_pipeline(base_ticker="247540", n_candidates=100, lookback_days=365)
     print(result)
-
 
 
