@@ -4,28 +4,63 @@ from pykrx import stock
 from datetime import datetime, timedelta
 import FinanceDataReader as fdr
 import pandas as pd
-import numpy as np
+import requests
+from bs4 import BeautifulSoup
+
+def get_realtime_price(ticker: str) -> int:
+    """
+    Return the real-time quote (현재가) for a KRX ticker
+    by scraping Naver Finance. Only works when the market is open.
+    """
+    url = f"https://finance.naver.com/item/main.naver?code={ticker}"
+    resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+    resp.raise_for_status()
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    # The current price lives in <p class="no_today"><em class="no_up">…<span class="blind">123,456</span>
+    price_tag = soup.select_one("p.no_today .blind")
+    if not price_tag:
+        raise ValueError(f"실시간 주가를 가져올 수 없습니다: {ticker}")
+    # Strip commas and convert to int
+    return int(price_tag.text.strip().replace(",", ""))
+
 
 LOOKBACK_DAYS = 5
 
 def get_stock_close_price(ticker: str, target_date: str = None) -> float:
     """
-    Return the most recent closing price for a Korean stock (KOSPI/KOSDAQ/KONEX).
-    1) Try PyKRX on target_date (or today) and look back up to LOOKBACK_DAYS.
-    2) If no data, fallback to FDR full history.
+    Return the most recent closing price for a Korean stock.
+    1) Try PyKRX on target_date (or today), looking back up to LOOKBACK_DAYS.
+    2) If no data, fallback to FinanceDataReader.
     """
-    # determine base date
-    date_obj = datetime.today() if not target_date else datetime.strptime(target_date, "%Y%m%d")
+    # 1) Determine the date to start lookup
+    if target_date:
+        date_obj = datetime.strptime(target_date, "%Y-%m-%d")
+    else:
+        date_obj = datetime.now()
 
-    # 1) PyKRX lookback
-    for i in range(LOOKBACK_DAYS):
-        day = (date_obj - timedelta(days=i)).strftime("%Y%m%d")
-        df = stock.get_market_ohlcv(day, day, ticker)
+    # 2) Look back up to LOOKBACK_DAYS using PyKRX
+    for _ in range(LOOKBACK_DAYS):
+        day_str = date_obj.strftime("%Y%m%d")
+        df = get_market_ohlcv_by_date(day_str, day_str, ticker)
         if not df.empty:
             return float(df["종가"].iloc[-1])
+        date_obj -= timedelta(days=1)
 
-    # 2) fallback
-    return _get_fdr_last_close(ticker)
+    # 3) Fallback: FinanceDataReader
+    try:
+        # FinanceDataReader expects 'YYYY-MM-DD' format
+        start = (date_obj + timedelta(days=1)).strftime("%Y-%m-%d")
+        end   = datetime.now().strftime("%Y-%m-%d")
+        df_fdr = fdr.DataReader(ticker, start, end)
+        if not df_fdr.empty:
+            # FDR column is 'Close'
+            return float(df_fdr["Close"].iloc[-1])
+    except Exception:
+        pass
+
+    raise ValueError(f"No recent price found for {ticker} in last {LOOKBACK_DAYS} days")
+
 
 
 def _get_fdr_last_close(ticker: str) -> float:

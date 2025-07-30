@@ -1,5 +1,8 @@
 import os
 from typing import Optional, List
+import time
+from uuid import uuid4
+import requests
 
 import numpy as np
 from sklearn.preprocessing import minmax_scale
@@ -28,6 +31,16 @@ dense_collection = client.get_or_create_collection(
         model_name=settings.EMBEDDING_MODEL_NAME
     )
 )
+
+# You can use the same embedding function so you can query memory by semantic similarity
+memory_collection = client.get_or_create_collection(
+    name=settings.MEMORY_COLLECTION_NAME,  
+    embedding_function=OpenAIEmbeddingFunction(
+        api_key=settings.OPENAI_API_KEY,
+        model_name=settings.EMBEDDING_MODEL_NAME
+    )
+)
+
 
 # ───────────────────────────────────────────────
 # 2) In-memory BM25 index (rebuilt after each ingest)
