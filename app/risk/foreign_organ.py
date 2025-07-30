@@ -1,16 +1,19 @@
-# 이 주식을 외인이 순매도
-    # 외인의 매수금액 vs 매도금액만 비교
+# ㄹ) 외인*기관 최신 순매도일 수
+    # 외인*기관의 매수금액 vs 매도금액만 비교
         # 순매수일 (+)
         # 순매도일 (-)
-
-# 0~10
-# 10~20
-# 20~30
+"""
+    최근 30일 중 순매수합계가 음수인 일수(neg_days)에 따라
+      - 0 ≤ neg_days < 10   → '낮음'
+      - 10 ≤ neg_days ≤ 20  → '중간'
+      -      neg_days ≥ 21  → '높음'
+"""
 
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from pykrx.stock import get_market_trading_value_by_date
+from app.risk.d_e_r import get_corp
 
 def get_risk_components(ticker: str, start: str, end: str) -> pd.DataFrame:
     """
@@ -33,8 +36,48 @@ def get_risk_components(ticker: str, start: str, end: str) -> pd.DataFrame:
         "거래대금": total_value
     })
     df.index = pd.to_datetime(df.index)
+    # print(df)
     return df
 
+def get_last_30_days_dates() -> pd.DatetimeIndex:
+    """
+    Returns a DatetimeIndex of the last 30 calendar days (including today),
+    with daily frequency.
+    """
+    today = pd.Timestamp.today().normalize()
+    start = today - pd.Timedelta(days=29)
+    return pd.date_range(start=start, end=today, freq='D')
+
+
+def count_negative_net_flow(df: pd.DataFrame) -> int:
+    """
+    Given the DataFrame from get_risk_components (indexed by date, with
+    a '순매수합계' column), returns the number of days in the last
+    30 days where '순매수합계' < 0.
+    """
+    # 1) 최근 30일 날짜 인덱스 생성
+    last_30 = get_last_30_days_dates()
+    # 2) 해당 날짜만 df로 재색인(reindex) → 없는 날은 NaN
+    df_30 = df.reindex(last_30)
+    # 3) 음수인 값만 카운트 (NaN < 0 → False 처리)
+    neg_count = (df_30['순매수합계'] < 0).sum()
+    return int(neg_count)
+
+def categorize_negative_flow_days(neg_days: int) -> str:
+    """
+    최근 30일 중 순매수합계가 음수인 일수(neg_days)에 따라
+      - 0 ≤ neg_days < 10   → '낮음'
+      - 10 ≤ neg_days ≤ 20  → '중간'
+      -      neg_days ≥ 21  → '높음'
+    """
+    if neg_days < 10:
+        return "낮음"
+    elif neg_days < 21:
+        return "중간"
+    else:
+        return "높음"
+
+# ---아래는 수정 이전 코드. 전체 대비 비율, 최장 연속 매도일수 등 계산------------------------------------
 def compute_cnssd(ticker: str, start: str, end: str) -> int:
     """
     CNSSD: Consecutive Net Sell Days
@@ -62,18 +105,6 @@ def compute_cnssd(ticker: str, start: str, end: str) -> int:
             current = 0
 
     return max_streak
-
-# def daily_risk_score(ticker: str, start: str, end: str) -> pd.Series:
-#     """
-#     일별 리스크 스코어 계산:
-#       risk = max(0, -순매수합계 / 거래대금)
-#     순매도일에만 비율이 양수, 순매수일은 0
-#     반환: DatetimeIndex → risk_score (0~1)
-#     """
-#     df = get_risk_components(ticker, start, end)
-#     net_sell = df["순매수합계"].clip(upper=0).abs()
-#     risk = net_sell / df["거래대금"]
-#     return risk.round(4)
 
 # 1) 누적 순매수합계 시리즈
 def get_cumulative_flow(ticker: str, start: str, end: str) -> pd.Series:
@@ -136,24 +167,31 @@ def compute_periodic_average_sell_ratio(
     result_df["평균 순매도 비율(%)"] = result_df["평균 순매도 비율(%)"].map(lambda x: f"{x:.2f}%")
     return result_df["평균 순매도 비율(%)"]
 
-# ── 사용 예시 ──
+# ---위에는 수정 이전 코드. 전체 대비 비율, 최장 연속 매도일수 등 계산-----------
+
+def calculate_rank_days(ticker:str):
+    corp_name, corp = get_corp(ticker)
+    df = get_risk_components(ticker, "20240726", "20250726")
+    # dates = get_last_30_days_dates()
+    neg_days = count_negative_net_flow(df)
+    level = categorize_negative_flow_days(neg_days)
+    return corp, corp_name, neg_days, level
+
 if __name__ == "__main__":
-    ticker = "247540"
-    start, end = "20240726", "20250726"
+    ticker = '047050'
+    corp, corp_name, neg_days, level =calculate_rank_days(ticker)
+    print(f"[ticker: {ticker}], [종목명: {corp_name}] [최근 30일 중 외인*기관 순매도 일수: {neg_days}일], [위험 수준: {level}]")
+    
+# # ── 사용 예시 ──
+# if __name__ == "__main__":
+#     ticker = "247540"
+#     start, end = "20240726", "20250726"
 
-    # print(get_cumulative_flow(ticker, start, end))
-
-    # 1) 누적 순매수곡선
-    print("월별 누적 순매수 (최근 3개월):")
-    print(get_monthly_cumulative_flow(ticker, start, end))
-    print("\n주별 누적 순매수 (최근 4주):")
-    print(get_weekly_cumulative_flow(ticker, start, end))
-
-    # 2) CNSSD 건드리지 않음(이미 compute_cnssd() 있음)
-
-    # 3) 평균 리스크 (1,3,6,12M)
-    print("\n기간별 평균 리스크:")
-    print(compute_periodic_average_sell_ratio(ticker, end))
-
-    cnssd = compute_cnssd(ticker, start, end)
-    print(f"CNSSD (최대 연속 순매도일수): {cnssd}일") 
+#     df = get_risk_components("247540", "20240726", "20250726")
+#     # 1) 최근 30일 날짜 확인
+#     dates = get_last_30_days_dates()
+#     print("최근 30일 날짜:", dates.strftime("%Y-%m-%d").tolist())
+    
+#     # 2) 음수 순매수합계 개수
+#     neg_days = count_negative_net_flow(df)
+#     print(f"최근 30일 중 순매수합계가 음수인 날: {neg_days}일")
