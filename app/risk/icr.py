@@ -225,7 +225,7 @@ def calculate_icr(ticker: str) -> Dict[str, Union[str, float, None]]:
 
 # Example usage:
 if __name__ == "__main__":
-    print(calculate_icr("005930"))
+    print(calculate_icr("047050"))
 
 
 # 247540 에코프로비엠: 단일 포괄손익계산서

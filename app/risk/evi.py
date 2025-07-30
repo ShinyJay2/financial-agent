@@ -1,3 +1,8 @@
+# ㅁ) 순이익 변동성(Earnings Volatility)
+    # 수익률 변동성의 회계버전 
+
+# ㄱ)조건적용
+
 import re
 import numpy as np
 import pandas as pd
@@ -32,33 +37,30 @@ def extract_financial_statements(
 
 def extract_cis_df(corp, bgn_de: str) -> pd.DataFrame:
     """
-     포괄 손익계산서(cis) DataFrame을 꺼냄.
-    연결재무제표 우선 시도, 실패 시 개별재무제표로 fallback.
+     (포괄) 손익계산서(cis) DataFrame을 꺼내고 없으면 손익계산서(is)를 꺼냄
     """
-    # ① 연결재무제표 시도
+    # 재무제표 전체 추출 시도
     fs   = extract_financial_statements(corp, bgn_de=bgn_de, report_tp="annual", separate=True)
-    print("fs 전체:",fs)
     
+    cis_flag = True
     cis_df = fs["cis"]
     if cis_df is None or cis_df.empty:
         print("CIS 데이터 없음 → IS로 폴백")
+        cis_flag = False
         cis_df = fs['is']
 
-    # 4) 그래도 없으면 에러
+    # 그래도 없으면 에러
     if cis_df is None or cis_df.empty:
         raise ValueError("포괄손익계산서(cis) 및 손익계산서(is) 데이터가 모두 없습니다.")
 
-    print(f"📄 선택된 손익계산서 로우 수: {len(cis_df)}")
     return cis_df
 
 
 def find_net_income_label(cis_df) -> Tuple[Tuple, str]:
     """
     account 컬럼(label_ko)과 최신 금액 컬럼(연결·개별 모두 포함)을 반환
+    후 당기순이익 추출
     """
-    print("🧩 모든 컬럼 목록:")
-    for col in cis_df.columns:
-        print(col)
     # account_col 찾기
     account_cols = [
         col for col in cis_df.columns
@@ -70,11 +72,10 @@ def find_net_income_label(cis_df) -> Tuple[Tuple, str]:
 
     # net_label 분기
     labels = cis_df[account_col].unique().tolist()
-    if '당기순이익' in labels:
-        net_label = '당기순이익'
-    elif '당기순이익(손실)' in labels:
-        net_label = '당기순이익(손실)'
-    else:
+    pattern = re.compile(r"^당기순이익(?:\(손실\))?$")
+
+    net_label = next((lbl for lbl in labels if pattern.match(lbl)), None)
+    if not net_label:
         raise ValueError("당기순이익 계정명이 없습니다.")
 
     return account_col, net_label
@@ -128,7 +129,24 @@ def compute_evi(series: pd.Series) -> float:
     std_  = series.std(ddof=1)
     if mean_ == 0:
         return float('nan')
-    return std_ / abs(mean_)
+    return float(std_ / abs(mean_))
+
+def classify_evi(evi: float) -> str:
+    """
+    EVI 기준에 따른 리스크 레벨 분류
+    - evi < 0.5: Low
+    - 0.5 ≤ evi < 1.25: Medium
+    - evi ≥ 1.25: High
+    """
+    if pd.isna(evi):
+        return "Unknown"
+    if evi < 0.5:
+        return "Low"
+    elif evi < 1.25:
+        return "Medium"
+    else:
+        return "High"
+
 def calculate_evi(
     ticker: str,
     years: int = 3
@@ -151,18 +169,21 @@ def calculate_evi(
     series = extract_net_income_series(cis_df, account_col, net_label, amount_cols)
     # 7) EVI 계산
     evi_value = compute_evi(series)
+    # 8) 등급계산
+    rank = classify_evi(evi_value)
 
     return {
         "ticker":      ticker,
         "corp_name":   corp_name,
-        "net_label":   net_label,
-        "evi":         round(evi_value, 4)
+        # "net_label":   net_label,
+        "evi":         round(evi_value, 4),
+        "rank": rank
     }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # __main__ 간소화 예시
 if __name__ == "__main__":
-    result = calculate_evi("330590", years=3)
+    result = calculate_evi("023530", years=3)
     print(result)
     # 출력 예시: {'ticker': '005930', 'corp_name': '삼성전자', 'net_label': '당기순이익', 'evi': 0.1234}
 

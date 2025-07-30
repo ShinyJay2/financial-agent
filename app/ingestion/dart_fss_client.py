@@ -51,7 +51,8 @@ def extract_financial_statements(
     corp: Corp,
     bgn_de: str,
     end_de: Optional[str] = None,
-    report_tp: str = "annual"
+    report_tp: Optional[str] = None,
+    last_report_only: bool = True 
 ) -> Dict[str, DataFrame]:
     """
     Download and parse financial statements.
@@ -61,7 +62,7 @@ def extract_financial_statements(
     Returns a dict with keys 'bs','is','cis','cf'.
     """
     end_de = end_de or date.today().strftime("%Y%m%d")
-    return corp.extract_fs(bgn_de=bgn_de, end_de=end_de, report_tp=report_tp)
+    return corp.extract_fs(bgn_de=bgn_de, end_de=end_de, report_tp=report_tp, last_report_only=last_report_only)
 
 # get_risk_factors는 안쓰는 함수
 def get_risk_factors(corp_code: str, bgn_de: str, end_de: str) -> str:
