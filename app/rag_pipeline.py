@@ -312,12 +312,11 @@ class RAGPipeline:
 
         """
         Generates LLM-driven answers based on router-classified domains:
-        - Domains: 위험 지표, 최신 종목 뉴스, 위험 헷징, 종목 위험 분석, 주식 정보
+        - Domains: 위험 지표, 최신 종목 뉴스, 위험 헷징, 종목 위험 분석, 주가 및 주식 정보
         - Metrics shown only for 위험 지표 and 종목 위험 분석 domains.
         - Unclassified queries and other domains use a generic prompt with citation rules.
         """
-        from datetime import date
-        import re
+
         from app.rag_pipeline import date_from_id
 
         # 1) Extract tickers (with history fallback)
@@ -364,6 +363,7 @@ class RAGPipeline:
         # 5) Domain routing
         payload = {"query": query, "chatHistory": history or []}
         domain = self.router.execute(payload).get("domain", None)
+        print(f"🛠️  Classified domain → '{domain}'")
 
         # 6) Compute risk metrics (only for specific domains)
         metrics: dict[str, dict[str, Any]] = {}
@@ -417,35 +417,26 @@ class RAGPipeline:
                 "label":    f"외국인·기관 순매도 일수: {neg_days}일 (Level: {flow_level})",
                 "elevated": is_flow_high
             }
+        
+        # immediately after your volatility/beta/... computations
+        if tickers and domain == "주가 및 주식 정보":
 
-        # 9) Prepare metric texts for 종목 위험 분석
-        metric_texts = []
-        header = ""
-        if domain == "종목 위험 분석" and not tickers:
-            return "궁금하신 종목을 입력해주세요."
-        if domain == "종목 위험 분석" and tickers:
             t0 = tickers[0]
-            metric_texts = [
-                f"(Calculated) {metrics['volatility']['label']}",
-                f"(Calculated) {metrics['beta']['label']}"
-            ]
-            header_lines = ["(Retrieved from calculation)", f"Ticker: {t0}"]
-            if metrics['volatility']['elevated']:
-                header_lines.append(f"- {metrics['volatility']['label']}")
-            if metrics['beta']['elevated']:
-                header_lines.append(f"- {metrics['beta']['label']}")
-            if metrics['de_ratio']['elevated']:
-                header_lines.append(f"- {metrics['de_ratio']['label']}")
-            if metrics['evi']['elevated']:
-                header_lines.append(f"- {metrics['evi']['label']}")
-            if metrics['foreign']['elevated']:
-                header_lines.append(f"- {metrics['foreign']['label']}")
-                
-            header = "\n".join(header_lines) + "\n\n"
+            try:
+                price = get_realtime_price(t0)
+            except Exception:
+                price = None
+            metrics["price"] = {
+                "label": f"실시간 주가: {price:,}원" if price is not None else "실시간 주가: N/A",
+                "value": price
+            }
 
 
-        from datetime import date
-        import re
+    
+        header = ""
+
+        
+
 
         # Helper function for citation formatting
         def format_citation(txt: str, did: str, date_from_id, for_numbered=False) -> str:
@@ -461,23 +452,41 @@ class RAGPipeline:
                 except Exception:
                     return "[출처:{did}]".format(did=did)
             return "[출처:{did}]".format(did=did)  # Non-date-based file names
+        
+                # 12) Build risk analysis template for 종목 위험 분석
+        def cat_chunks(cat: str, n: int = 3) -> str:
+            chunk_list = self.retrieve(f"{query} {cat}", context=convo_ctx) if query and convo_ctx else []
+            selected = chunk_list[:n]
+            out = ""
+            for did, txt in selected:
+                snippet = txt.replace("\n", " ")[:200]
+                if re.match(r"^\d{8}_", did):
+                    try:
+                        date_obj = date_from_id(did)
+                        date_str = date_obj.strftime('%Y-%m-%d') if date_obj else "Unknown"
+                    except Exception:
+                        date_str = "Unknown"
+                else:
+                    date_str = "Unknown"
+                out += f"- ({date_str}_{did if date_str != 'Unknown' else did}) {snippet}...\n"
+            return out
 
         # 10) Retrieval and rerank with citations
         candidates = self.retrieve(retrieval_q) if retrieval_q else []
         text_to_src = {txt: did for did, txt in candidates}
         base_texts = [txt for _, txt in candidates]
-        metric_texts = []
+        metric_rerank = []
         if domain == "위험 지표" and tickers:
             t0 = tickers[0]
             if metrics and all(key in metrics for key in ['volatility', 'beta', 'de_ratio', 'evi', 'foreign']):
-                metric_texts = [
+                metric_rerank = [
                     f"(Calculated) {metrics['volatility']['label']}",
                     f"(Calculated) {metrics['beta']['label']}",
                     f"(Calculated) {metrics['de_ratio']['label']}",
                     f"(Calculated) {metrics['evi']['label']}",
                     f"(Calculated) {metrics['foreign']['label']}"
                 ]
-        combined = metric_texts + base_texts if domain == "위험 지표" else base_texts
+        combined = metric_rerank + base_texts if domain == "위험 지표" else base_texts
         k = (self.final_k * 2 if domain == "위험 지표" else self.final_k) if hasattr(self, 'final_k') else 3
         top_texts = rerank_with_cross_encoder(retrieval_q, combined, k) if combined else []
         if not top_texts:
@@ -489,31 +498,34 @@ class RAGPipeline:
             ]
             numbered = "\n\n".join(numbered_lines)
 
-        # 7) Handle 주식 정보
-        if domain == "주식 정보":
+
+        body = ""
+
+        # 7) Handle 주가 및 주식 정보
+        if domain == "주가 및 주식 정보":
             if not tickers:
                 return "궁금하신 종목을 입력해주세요."
             ticker = tickers[0]
-            try:
-                live_price = get_realtime_price(ticker)
-            except Exception:
-                live_price = "N/A"
-            prefix = "".join(f"Q: {turn['question']}\nA: {turn['answer']}\n\n" for turn in history[-2:]) if history else ""
+
+            # Build the price header using the pre‐formatted label
+            price_label = metrics.get("price", {}).get("label", "실시간 주가: N/A")
+            header = f"(Retrieved from calculation)\n{price_label}\n\n"
+
+            # Build the HyperClova prompt as before
+            prefix = "".join(
+                f"Q: {turn['question']}\nA: {turn['answer']}\n\n"
+                for turn in history[-2:]
+            )
             base_prompt = (
                 "본문의 정보들은 [출처 파일명] 형식으로 정확히 인용할 것. [출처 파일명]은 문서 ID (날짜가 포함된 경우 YYYY-MM-DD_문서ID, 그렇지 않은 경우 문서ID 그대로)로, 텍스트 없이 문서 ID만 표시해야 합니다.\n"
                 "주어진 자료 이외에 다른 추측이나 생각은 금지.\n"
-                f"현재 {ticker} 실시간 주가는 {live_price:,}원입니다. {query}에 대해 답변하세요.\n"
+                f"{price_label} 를 바탕으로 이 주식 {query}에 대해 답변하세요.\n"
+                f"실시간 주가와 함께 이 주식{query}에 대해 답변하세요.\n"
                 "- 답변 본문에 인용된 모든 출처는 [출처 파일명] 형식으로, 문서 ID만 표시할 것.\n"
                 "- 답변 마지막에 아래 제공된 **출처 목록**을 번호와 함께 정확히 그대로 포함할 것. 수정하거나 재구성하지 말고, 제공된 형식을 엄격히 따를 것.\n\n"
                 f"**출처 목록**\n{numbered}"
-            ) if live_price != "N/A" else (
-                "본문의 정보들은 [출처 파일명] 형식으로 정확히 인용할 것. [출처 파일명]은 문서 ID (날짜가 포함된 경우 YYYY-MM-DD_문서ID, 그렇지 않은 경우 문서ID 그대로)로, 텍스트 없이 문서 ID만 표시해야 합니다.\n"
-                "주어진 자료 이외에 다른 추측이나 생각은 금지.\n"
-                f"실시간 주가 정보를 가져올 수 없습니다. {query}에 대해 답변하세요.\n"
-                "- 답변 본문에 인용된 모든 출처는 [출처 파일명] 형식으로, 문서 ID만 표시할 것.\n"
-                "- 답변 마지막에 아래 제공된 **출처 목록**을 번호와 함께 정확히 그대로 포함할 것. 수정하거나 재구성하지 말고, 제공된 형식을 엄격히 따를 것.\n\n"
-                f"**출처 목록**\n{numbered}"
-            )
+            ) 
+
             candidates = self.retrieve(f"{ticker} {query}") if query and ticker else []
             text_to_src = {txt: did for did, txt in candidates}
             candidate_texts = [txt for _, txt in candidates][:3]
@@ -526,6 +538,7 @@ class RAGPipeline:
                 ]
                 citations = "\n".join(numbered_lines)
             response = ask_hyperclova(prefix + base_prompt + "\n\n" + citations + f"\n\nQ: {query}\nA:")
+
             # Fallback: Append citation list if not included
             # Enhanced fallback: also catch replies that end with a generic “[1] …” list
             lines = [L for L in response.splitlines() if L.strip()]
@@ -537,11 +550,13 @@ class RAGPipeline:
                 )
                 if needs_fallback:
                     response = response.rstrip() + f"\n\n**출처 목록**\n{numbered}"
-            return response
+
+            body = response
+
 
 
         # 8) Handle 위험 지표
-        if domain == "위험 지표":
+        elif domain == "위험 지표":
             if not tickers:
                 return "궁금하신 종목을 입력해주세요."
             t0 = tickers[0]
@@ -556,10 +571,11 @@ class RAGPipeline:
                 f"- {metrics['evi']['label']}",
                 f"- {metrics['foreign']['label']}",
             ]
-            return "\n".join(header_lines)
+            header =  "\n".join(header_lines)
+            body = ""
 
         # 11) Handle 최신 종목 뉴스
-        if domain == "최신 종목 뉴스":
+        elif domain == "최신 종목 뉴스":
             news_chunks = [
                 (did, txt) for did, txt in self.retrieve(retrieval_q) if retrieval_q and re.match(r"^\d{8}_", did)
             ]
@@ -591,13 +607,14 @@ class RAGPipeline:
                 f"아래는 '{query}'에 대한 최신 뉴스 5건입니다.\n"
                 "- 각 항목에 **날짜(YYYY-MM-DD)**, **제목**, **출처 ID**를 정확히 포함해주세요.\n\n"
                 + "\n".join(numbered_recent) +
-                f"\n\n위 형식에 맞춰 핵심 내용을 간결히 요약해 설명해주세요.\n"
+                f"\n\n위 형식에 맞춰 핵심 내용을 요약해 설명해주세요.\n"
                 "- 답변 본문에 인용된 모든 출처는 [출처 파일명] 형식으로, 문서 ID만 표시할 것.\n"
                 "- 답변 마지막에 아래 제공된 **출처 목록**을 번호와 함께 정확히 그대로 포함할 것. 수정하거나 재구성하지 말고, 제공된 형식을 엄격히 따를 것.\n\n"
                 f"**출처 목록**\n{numbered}"
             )
             prefix = "".join(f"Q: {turn['question']}\nA: {turn['answer']}\n\n" for turn in history[-2:]) if history else ""
             response = ask_hyperclova(prefix + recent_tmpl + f"\n\nQ: {query}\nA:")
+
             # Fallback: Append citation list if not included
             # Enhanced fallback: also catch replies that end with a generic “[1] …” list
             lines = [L for L in response.splitlines() if L.strip()]
@@ -609,42 +626,39 @@ class RAGPipeline:
                 )
                 if needs_fallback:
                     response = response.rstrip() + f"\n\n**출처 목록**\n{numbered}"
-            return response
+            body = response
 
 
-        # 12) Build risk analysis template for 종목 위험 분석
-        def cat_chunks(cat: str, n: int = 3) -> str:
-            chunk_list = self.retrieve(f"{query} {cat}", context=convo_ctx) if query and convo_ctx else []
-            selected = chunk_list[:n]
-            out = ""
-            for did, txt in selected:
-                snippet = txt.replace("\n", " ")[:200]
-                if re.match(r"^\d{8}_", did):
-                    try:
-                        date_obj = date_from_id(did)
-                        date_str = date_obj.strftime('%Y-%m-%d') if date_obj else "Unknown"
-                    except Exception:
-                        date_str = "Unknown"
-                else:
-                    date_str = "Unknown"
-                out += f"- ({date_str}_{did if date_str != 'Unknown' else did}) {snippet}...\n"
-            return out
-
-        if domain == "종목 위험 분석":
+        
+        elif domain == "종목 위험 분석":
             if not tickers:
                 return "궁금하신 종목을 입력해주세요."
+            
             t0 = tickers[0]
+
+            # 9) Prepare metric texts for 종목 위험 분석
+            # 2) Build a list of all five metric labels
+            metric_keys = ["volatility", "beta", "de_ratio", "evi", "foreign"]
+            analysis_metrics = [
+                metrics[k]["label"]
+                for k in metric_keys
+                if k in metrics
+            ]
+
+            # 3) Construct header showing only the “elevated” ones
             header_lines = ["(Retrieved from calculation)", f"Ticker: {t0}"]
-            if metrics and all(key in metrics for key in ['volatility', 'beta', 'de_ratio', 'evi', 'foreign']):
-                for metric in ["volatility", "beta", "de_ratio", "evi", 'foreign']:
-                    if metrics[metric].get("elevated", False):
-                        header_lines.append(f"- {metrics[metric]['label']}")
+            for k, label in zip(metric_keys, analysis_metrics):
+                if metrics.get(k, {}).get("elevated", False):
+                    header_lines.append(f"- (Calculated) {label}")
+
             header = "\n".join(header_lines) + "\n\n"
+
+
             risk_tmpl = (
                 "본문의 정보들은 [출처 파일명] 형식으로 정확히 인용할 것. [출처 파일명]은 문서 ID (날짜가 포함된 경우 YYYY-MM-DD_문서ID, 그렇지 않은 경우 문서ID 그대로)로, 텍스트 없이 문서 ID만 표시해야 합니다.\n"
                 "주어진 자료 이외에 다른 추측이나 생각은 금지.\n"
                 f"아래에 제공된 증거를 바탕으로 '{query}'의 위험 요인을 다섯 가지 카테고리로 나누어 한국어로 상세히 분석해주세요.\n"
-                "- 각 섹션별로 **최소 100자 이상** 작성할 것.\n"
+                "- 각 섹션별로 **최소 150자 이상** 작성할 것.\n"
                 "- 각 섹션 제목은 반드시 다음과 같이 정확히 사용할 것:\n"
                 "  1. 시장 리스크\n"
                 "  2. 재무 리스크\n"
@@ -675,38 +689,83 @@ class RAGPipeline:
                 )
                 if needs_fallback:
                     response = response.rstrip() + f"\n\n**출처 목록**\n{numbered}"
-            return response
+            body = response
 
 
-        # 13) Handle 위험 헷징
-        if domain == "위험 헷징":
-            base_prompt = (
-                "본문의 정보들은 [출처 파일명] 형식으로 정확히 인용할 것. [출처 파일명]은 문서 ID (날짜가 포함된 경우 YYYY-MM-DD_문서ID, 그렇지 않은 경우 문서ID 그대로)로, 텍스트 없이 문서 ID만 표시해야 합니다.\n"
-                "주어진 자료 이외에 다른 추측이나 생각은 금지.\n"
-                f"{query}에 대해 주어진 자료를 바탕으로 답변하세요.\n"
-                "- 답변 본문에 인용된 모든 출처는 [출처 파일명] 형식으로, 문서 ID만 표시할 것.\n"
-                "- 답변 마지막에 아래 제공된 **출처 목록**을 번호와 함께 정확히 그대로 포함할 것. 수정하거나 재구성하지 말고, 제공된 형식을 엄격히 따를 것.\n\n"
-                f"**출처 목록**\n{numbered}"
-            )
-            prefix = "".join(f"Q: {turn['question']}\nA: {turn['answer']}\n\n" for turn in history[-2:]) if history else ""
-            response = ask_hyperclova(prefix + base_prompt + f"\n\nQ: {query}\nA:")
-            # Fallback: Append citation list if not included
-            # Enhanced fallback: also catch replies that end with a generic “[1] …” list
-            lines = [L for L in response.splitlines() if L.strip()]
-            last_line = lines[-1] if lines else ""
-            if numbered != "No relevant information found.":
-                needs_fallback = (
-                    "**출처 목록**" not in response
-                    or re.match(r"^\[\s*1\s*\]", last_line)
-                )
-                if needs_fallback:
-                    response = response.rstrip() + f"\n\n**출처 목록**\n{numbered}"
-            return response
+                # 13) Handle 위험 헷징
+        elif domain == "위험 헷징":
+            if not tickers:
+                return "궁금하신 종목을 입력해주세요."
+            base_ticker = tickers[0]
+
+            m = re.search(r"(\d+)\s*주", query)
+            if m:
+                qty_base = int(m.group(1))
+            else:
+                # if you prefer a default, set qty_base = 1 here instead
+                return "현재 보유하신 주식 수를 ‘숫자+주’ 형태로 알려주세요 (예: 30주)."
+
+            # 1) Find the best hedge candidate
+            from app.hedging.regression import run_hedge_pipeline
+            from app.utils.ticker_map    import find_name_by_ticker
+            df_candidates = run_hedge_pipeline(base_ticker)
+            if df_candidates.empty:
+                return "헷징 후보가 없습니다."
+            hedge_ticker = str(df_candidates.loc[0, "ticker"])
+            base_name    = find_name_by_ticker(base_ticker)
+            hedge_name   = find_name_by_ticker(hedge_ticker)
+
+            # ── 3) Prepare dates ──
+            from datetime import date, timedelta
+            end   = date.today()
+            start = end - timedelta(days=365)
+            sd, ed = start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+
+            # ── 4) Sweep over absolute hedge sizes relative to user’s base_qty ──
+            from app.hedging.monte_carlo import diversification_abs
+            # e.g. 10%, 50%, 100% of what they hold, but at least 1 share
+            hedge_percs = [0.1, 0.5, 1.0]
+            hedge_qtys = [max(1, int(qty_base * pct)) for pct in hedge_percs]
+
+
+            reductions = {}
+            for q in hedge_qtys:
+                _, stats = diversification_abs(
+                    base_ticker=base_ticker,
+                    hedge_ticker=hedge_ticker,
+                    qty_base=qty_base,
+                    qty_hedge=q,
+                     start_date=sd,
+                     end_date=ed
+                 )
+                
+                reductions[q] = stats["VaR_reduction_%"]
+
+            # 3) Build header‐only response
+            header_lines = [
+                 "(Retrieved from calculation)",
+                 f"Base: {base_name} {qty_base}주  ({base_ticker})",
+                 f"Hedge candidate: {hedge_name} ({hedge_ticker})"
+             ]
+            
+            for q, red in reductions.items():
+                header_lines.append(f"- {q}주 매수 → VaR 약 {red:.2f}% 감소")
+
+
+            # assign to header and leave body empty
+            header = "\n".join(header_lines) + "\n\n"
+            body = ""
+
+
+
+            # fall through to final `return header + body`
 
 
         # 14) Assemble prompt for unclassified queries
-        prefix = "".join(f"Q: {turn['question']}\nA: {turn['answer']}\n\n" for turn in history[-2:]) if history else ""
-        if domain not in ["위험 지표", "최신 종목 뉴스", "위험 헷징", "종목 위험 분석", "주식 정보"]:
+        if domain not in ["위험 지표", "최신 종목 뉴스", "위험 헷징", "종목 위험 분석", "주가 및 주식 정보"]:
+
+            prefix = "".join(f"Q: {turn['question']}\nA: {turn['answer']}\n\n" for turn in history[-2:]) if history else ""
+
             base_prompt = (
                 "본문의 정보들은 [출처 파일명] 형식으로 정확히 인용할 것. [출처 파일명]은 문서 ID (날짜가 포함된 경우 YYYY-MM-DD_문서ID, 그렇지 않은 경우 문서ID 그대로)로, 텍스트 없이 문서 ID만 표시해야 합니다.\n"
                 "주어진 자료 이외에 다른 추측이나 생각은 금지.\n"
@@ -727,12 +786,12 @@ class RAGPipeline:
                 )
                 if needs_fallback:
                     response = response.rstrip() + f"\n\n**출처 목록**\n{numbered}"
-            return response
+            body = response
 
 
         # 15) Call LLM and return response
-        prompt = prefix + risk_tmpl if domain == "종목 위험 분석" else prefix + base_prompt if domain in ["주식 정보", "위험 헷징", "최신 종목 뉴스"] or domain not in ["위험 지표"] else prefix + numbered + f"\n\nQ: {query}\nA:"
-        response = ask_hyperclova(prompt)
+        #prompt = prefix + risk_tmpl if domain == "종목 위험 분석" else prefix + base_prompt if domain in ["주가 및 주식 정보", "위험 헷징", "최신 종목 뉴스"] or domain not in ["위험 지표"] else prefix + numbered + f"\n\nQ: {query}\nA:"
+        #response = ask_hyperclova(prompt)
 
         # 16) Upsert memory for future retrieval
         if history:
@@ -741,7 +800,15 @@ class RAGPipeline:
             memory_collection.upsert(ids=[mem_id], documents=[mem_text])
 
         # 17) Return response
-        return (header + response) if domain in ("종목 위험 분석", "위험 지표") else response
+        #return (header + response) if domain in ("종목 위험 분석", "위험 지표") else response
+        # 15) Fallback for any missing body
+        if 'body' not in locals():
+            # generic catch-all
+            body = ask_hyperclova(prefix + base_prompt + "\n\n" + numbered)
+
+        # 16) Prepend header (maybe empty) and return once
+        return header + body
+
     
 
     # UI용 답변 함수, 이거는 참고 문서도 doc_id랑 같이 가져온다.

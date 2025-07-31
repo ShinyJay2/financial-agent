@@ -12,7 +12,7 @@ class Executor:
     Executor for CLOVA Studio Router API with RAG intent routing.
     Uses configuration from app.config.settings.
     """
-    def __init__(self, host: str = "clovastudio.stream.ntruss.com", router_id: str = "yl0rl4cd", version: str = "15"):
+    def __init__(self, host: str = "clovastudio.stream.ntruss.com", router_id: str = "yl0rl4cd", version: str = "22"):
         self._host = host
         self._api_key = settings.HYPERCLOVA_API_KEY if settings.HYPERCLOVA_API_KEY.startswith('Bearer ') \
             else f"Bearer {settings.HYPERCLOVA_API_KEY}"
@@ -45,10 +45,11 @@ class Executor:
         Returns one of: 위험 지표, 종목 위험 분석, 최신 종목 뉴스, 일반 검색.
         """
         keywords = {
-            "위험 지표": ["변동성", "베타", "지표"],
-            "종목 위험 분석": ["위험", "리스크", "분석"],
-            "최신 종목 뉴스": ["뉴스", "최신", "정보"],
-            "일반 검색": []
+            "위험 지표": ["위험지표", "지표", "변동성", "베타", "외국인 순매도", "evi", "부채 비율", "d/e ratio", "icr"],
+            "종목 위험 분석": ["위험", "리스크", "위험 요소 분석"],
+            "최신 종목 뉴스": ["뉴스", "최신"],
+            "위험 헷징": ["헷징", "손해", "줄이는"],
+            "주가 및 주식 정보": ["주가", "주식 정보", "실시간 주가"]
         }
         query_lower = query.lower()
         for domain, keyword_list in keywords.items():
@@ -71,7 +72,7 @@ class Executor:
         # Override with RAG intent if CLOVA domain is generic or mismatched
         clova_domain = res.get("result", {}).get("domain", "")
         rag_domain = self._classify_rag_intent(query, chat_history)
-        if clova_domain not in ["위험 지표", "종목 위험 분석", "최신 종목 뉴스", "일반 검색"]:
+        if clova_domain not in ["위험 지표", "종목 위험 분석", "최신 종목 뉴스", "위험 헷징", "주가 및 주식 정보"]:
             res["result"]["domain"] = rag_domain
         else:
             res["result"]["domain"] = clova_domain
@@ -86,3 +87,5 @@ if __name__ == '__main__':
     executor = Executor()
     response_data = executor.execute(request_data)
     print(response_data)
+
+

@@ -12,7 +12,7 @@ import logging
 import json
 from typing import Any, List
 import fitz  # PyMuPDF for fast PDF text extraction
-# import camelot  # for table extraction from PDFs
+import camelot  # for table extraction from PDFs
 from bs4 import BeautifulSoup
 import tiktoken
 import docx
@@ -162,24 +162,22 @@ def sliding_window_chunk(
 
 
 def chunk_json(raw_json: str, records_per_chunk: int = 10) -> List[str]:
-    """
-    Splits a JSON payload into text chunks.
-     - If the top‐level object is a dict: return exactly one chunk.
-     - If it's a list: split into slices of up to records_per_chunk.
-     - On invalid JSON: return [].
-    """
     try:
-        data: Any = json.loads(raw_json)
+        data = json.loads(raw_json)
     except json.JSONDecodeError:
         return []
 
-    # Single‐object JSON → one chunk
+    # ▶ If it’s a single news record, extract its body
+    if isinstance(data, dict) and ("body_text" in data or "body" in data):
+        body = data.get("body_text") or data.get("body")
+        if isinstance(body, str) and body.strip():
+            return [body]
+
+    # ▶ Otherwise fall back to your original logic:
     if isinstance(data, dict):
         return [json.dumps(data, ensure_ascii=False)]
-
-    # List JSON → batch into multiple chunks
     if isinstance(data, list):
-        chunks: List[str] = []
+        chunks = []
         for i in range(0, len(data), records_per_chunk):
             batch = data[i : i + records_per_chunk]
             text = "\n\n".join(
@@ -189,8 +187,8 @@ def chunk_json(raw_json: str, records_per_chunk: int = 10) -> List[str]:
             chunks.append(text)
         return chunks
 
-    # Any other type → stringify once
     return [json.dumps(data, ensure_ascii=False)]
+
 
 
 def chunk_csv(raw_csv: str, rows_per_chunk: int = 50) -> List[str]:

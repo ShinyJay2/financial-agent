@@ -1,77 +1,88 @@
 import streamlit as st
 import os
-
 from app.rag_pipeline import RAGPipeline  # adjust import path if needed
 
-# —————————————————————————————————————————————————————
-# Load custom CSS
-# —————————————————————————————————————————————————————
-css_file = os.path.join("static", "style.css")
-if os.path.exists(css_file):
-    with open(css_file) as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+# Page configuration
+st.set_page_config(page_title="M.Riskit", layout="wide")
 
-# —————————————————————————————————————————————————————
-# App config
-# —————————————————————————————————————————————————————
-st.set_page_config(layout="wide", page_title="Korean Finance RAG Chat")
+def load_css(css_file_path):
+    if os.path.exists(css_file_path):
+        with open(css_file_path) as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-# —————————————————————————————————————————————————————
-# Cache your RAG pipeline once per session
-# —————————————————————————————————————————————————————
-@st.cache_resource
-def load_pipeline():
-    return RAGPipeline()
+# 1) Load custom CSS
+css_path = os.path.join("static", "style.css")
+load_css(css_path)
 
-pipeline = load_pipeline()
+# 2) Sidebar navigation
+st.sidebar.title("M.Riskit")
+st.sidebar.header("내 계정 정보")
 
-# —————————————————————————————————————————————————————
-# Initialize chat history
-# —————————————————————————————————————————————————————
-if "history" not in st.session_state:
-    st.session_state.history = []  # each: {"question","answer","sources"}
+menu = [
+    "에코프로비엠 위험성을 요약해줘",
+    "에코프로비엠 위험지표를 알려줘",
+    "에코프로비엠에 대한 투자 의견을 알려줘",
+    "에코프로비엠에 대한 주가를 알려줘",
+    "에코프로비엠 관련 뉴스를 알려줘",
+    "현재 에코프로비엠 30주를 가지고 있는데, 헷징하려면 어떻게 해야할 지 알려줘"
+]
+choice = st.sidebar.radio("메뉴", menu)
 
-# —————————————————————————————————————————————————————
-# Sidebar: conversation history & reset
-# —————————————————————————————————————————————————————
-with st.sidebar:
-    st.title("💬 대화 기록")
-    if st.button("새로운 질문"):
-        st.session_state.history.clear()
-    for turn in st.session_state.history:
-        st.markdown(f"<div class='chat-bubble user'>{turn['question']}</div>", unsafe_allow_html=True)
+# 3) Main chat area state
+if 'history' not in st.session_state:
+    st.session_state.history = []
+
+# Treat the menu choice as the user query
+user_input = choice
+
+# When a menu item is selected, invoke the RAG pipeline
+if user_input:
+    pipeline = RAGPipeline()
+    answer, sources = pipeline.answer(user_input)  # expects (str, List[(doc_id, chunk)])
+    st.session_state.history.append({
+        "user": user_input,
+        "answer": answer,
+        "sources": sources
+    })
+
+# 4) Display chat history and toggles
+chat_col, doc_col = st.columns((3, 1))
+with chat_col:
+    for idx, turn in enumerate(st.session_state.history):
+        # User message bubble
+        st.markdown(f"<div class='chat-bubble user'>{turn['user']}</div>", unsafe_allow_html=True)
+        # Assistant response bubble
         st.markdown(f"<div class='chat-bubble assistant'>{turn['answer']}</div>", unsafe_allow_html=True)
-        st.markdown("---")
-    st.markdown("© 2025 Your Name")
 
-# —————————————————————————————————————————————————————
-# Main UI: input & display
-# —————————————————————————————————————————————————————
-st.title("📊 Korean Finance RAG Chat")
+        # References header
+        st.markdown("<div class='docs-header'>📑 참조 자료</div>", unsafe_allow_html=True)
 
-query = st.chat_input("궁금한 것을 물어보세요…")
-if query:
-    # 1) Retrieve & chunk first
-    with st.spinner("Retrieving relevant passages…"):
-        answer, sources = pipeline.answer_with_sources(query, history=st.session_state.history)
+        # Toggleable document sources
+        for i, (doc_id, chunk) in enumerate(turn['sources']):
+            toggle_key = f"toggle_{idx}_{i}"
+            if toggle_key not in st.session_state:
+                st.session_state[toggle_key] = False
 
-    # 2) Validate & append to history
-    if "궁금하신 종목을 입력해주세요" in answer:
-        st.warning("종목 티커를 포함해 질문해 주세요 (예: AAPL에 대한 정보).")
-    else:
-        st.session_state.history.append({
-            "question": query,
-            "answer": answer,
-            "sources": sources
-        })
+            cols = st.columns((1, 5))
+            # View button
+            if cols[0].button("👁️ 보기", key=toggle_key):
+                st.session_state[toggle_key] = not st.session_state[toggle_key]
 
-# 3) Display the latest response
-if st.session_state.history:
-    last = st.session_state.history[-1]
+            # Document label
+            cols[1].markdown(f"**{doc_id}**")
 
-    st.markdown(f"<div class='chat-bubble assistant'>{last['answer']}</div>", unsafe_allow_html=True)
+            # On toggle, display snippet or chunk fallback
+            if st.session_state[toggle_key]:
+                data_dir = os.path.join(os.getcwd(), "data")
+                path = os.path.join(data_dir, doc_id)
+                if os.path.exists(path):
+                    with open(path, encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                    snippet = content[:1000] + ("..." if len(content) > 1000 else "")
+                    st.code(snippet)
+                else:
+                    st.write(chunk)
 
-    st.markdown("### 📑 참조 자료")
-    for doc_id, chunk in last["sources"]:
-        with st.expander(f"출처: {doc_id}", expanded=False):
-            st.write(chunk[:500] + "…" if len(chunk) > 500 else chunk)
+# Right column (reserved for future controls)
+with doc_col:
+    st.markdown("&nbsp;")
