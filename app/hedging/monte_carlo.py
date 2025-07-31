@@ -48,6 +48,88 @@ def diversification_effect(
 
     return hedge_ticker, metrics
 
+
+def diversification_new(
+    base_ticker: str,       # 예: '247540'
+    hedge_ticker: str,      # 예: '003230'
+    weight_base: float,     # raw relative size for base
+    weight_hedge: float,    # raw relative size for hedge
+    start_date: str,        # 'YYYYMMDD'
+    end_date: str           # 'YYYYMMDD'
+) -> tuple[str, dict]:
+    """
+    두 종목 포트폴리오(raw weights) VaR/ES 및 단일 대비 감소율 계산.
+    weight_base/weight_hedge를 합이 1이 되도록 정규화하여 포트폴리오 비중을 계산합니다.
+    반환값: (hedge_ticker, {VaR_base, VaR_port, VaR_reduction_%, ES_base, ES_port, ES_reduction_%})
+    """
+    # A) 수익률 계산
+    price_df   = get_aligned_price_df(base_ticker, [hedge_ticker], start_date, end_date)
+    returns_df = compute_daily_returns(price_df)
+
+    # B) 단일 VaR·ES (base only)
+    base_ret  = returns_df[base_ticker]
+    var_base  = -np.percentile(base_ret, 5)
+    es_base   = -base_ret[base_ret <= np.percentile(base_ret, 5)].mean()
+
+    # C) 포트폴리오 VaR·ES
+    w_raw     = np.array([weight_base, weight_hedge], dtype=float)
+    w         = w_raw / w_raw.sum()  # normalize to fractions
+    port_ret  = returns_df[[base_ticker, hedge_ticker]].dot(w)
+    var_port  = -np.percentile(port_ret, 5)
+    es_port   = -port_ret[port_ret <= np.percentile(port_ret, 5)].mean()
+
+    # D) 리스크 감소율
+    var_red   = (var_base  - var_port) / var_base * 100
+    es_red    = (es_base   - es_port ) / es_base  * 100
+
+    metrics = {
+        'VaR_base':        round(float(var_base), 2),
+        'VaR_port':        round(float(var_port), 2),
+        'VaR_reduction_%': round(float(var_red), 2),
+        'ES_base':         round(float(es_base), 2),
+        'ES_port':         round(float(es_port), 2),
+        'ES_reduction_%':  round(float(es_red), 2)
+    }
+
+    return hedge_ticker, metrics
+
+def diversification_abs(
+    base_ticker: str,
+    hedge_ticker: str,
+    qty_base: int,
+    qty_hedge: int,
+    start_date: str,  # 'YYYYMMDD'
+    end_date: str     # 'YYYYMMDD'
+) -> tuple[str, dict]:
+    """
+    실제 주식 수량(qty) 기준으로 포트폴리오 VaR/ES 및 단일 대비 감소율을 계산.
+    반환값: (hedge_ticker, {VaR_base, VaR_port, VaR_reduction_%})
+    """
+    # A) 가격 & 수익률
+    price_df   = get_aligned_price_df(base_ticker, [hedge_ticker], start_date, end_date)
+    returns_df = compute_daily_returns(price_df)
+
+    # B) 단일 VaR (base only) — % 손실이 아니라 '포트폴리오 가치' 기준 손실
+    base_vals = price_df[base_ticker] * qty_base
+    base_rets = base_vals.pct_change().dropna()
+    var_base  = -np.percentile(base_rets, 5)
+
+    # C) 포트폴리오 VaR
+    hedge_vals = price_df[hedge_ticker] * qty_hedge
+    port_vals  = base_vals + hedge_vals
+    port_rets  = port_vals.pct_change().dropna()
+    var_port   = -np.percentile(port_rets, 5)
+
+    # D) 절대 VaR 감소율
+    var_red    = (var_base - var_port) / var_base * 100
+
+    return hedge_ticker, {
+        "VaR_base":        round(float(var_base), 4),
+        "VaR_port":        round(float(var_port), 4),
+        "VaR_reduction_%": round(float(var_red), 2)
+    }
+
+
 def mc_practice(base_ticker: str) -> list:
     """
     1) run_hedge_pipeline으로 최적 헷지 티커 뽑고
