@@ -13,3 +13,4 @@ finagent/
 .vscode/
 
 # ChromaDB
+chroma_db/
