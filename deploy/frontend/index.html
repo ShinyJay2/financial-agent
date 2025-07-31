@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>RAG Chat Front</title>
+</head>
+<body>
+  <h1>RAG Chat</h1>
+  <input id="q" type="text" placeholder="질문을 입력하세요" style="width:80%">
+  <button onclick="ask()">전송</button>
+  <pre id="a" style="background:#f0f0f0; padding:10px;"></pre>
+
+  <script>
+    async function ask() {
+      const q = document.getElementById("q").value;
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({question: q})
+      });
+      const {answer} = await res.json();
+      document.getElementById("a").innerText = answer;
+    }
+  </script>
+</body>
+</html>
