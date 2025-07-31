@@ -3,10 +3,7 @@ __pycache__/
 *.pyc
 
 # Virtual environments
-.venv/
-venv/
 finagent/
-finagent2/
 
 
 # Environment variables
