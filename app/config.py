@@ -14,14 +14,15 @@ class Settings(BaseSettings):
     MEMORY_COLLECTION_NAME: str = "memory_collection"
     NAVER_CLIENT_ID:     str
     NAVER_CLIENT_SECRET: str
-    GOOGLE_APPLICATION_CREDENTIALS: str = Field(
-        "miraeasset-finagent.json",  # relative to your project root
-        env="GOOGLE_APPLICATION_CREDENTIALS")
+    #GOOGLE_APPLICATION_CREDENTIALS: str = Field(
+        #"miraeasset-finagent.json",  # relative to your project root
+        #env="GOOGLE_APPLICATION_CREDENTIALS")
 
       
     model_config = SettingsConfigDict(
         env_file = ".env",        # ← point at your .env here
-        env_file_encoding = "utf-8"
+        env_file_encoding = "utf-8",
+        extra="ignore"
     )
 
 settings = Settings()

@@ -1,7 +1,7 @@
 [server]
-headless    = true        # don’t open a browser (required in containers)
-enableCORS  = false       # disable same-origin checks behind Cloud’s proxy
-port        = "${PORT}"   # interpolate the $PORT env var assigned by Cloud
-
-[runner]
-mainModule = "demo/streamlit_app.py"
+headless = true
+enableXsrfProtection = true
+# if you truly need cross‐origin, set this to true and disable XSRF instead:
+# enableCORS = true
+address = "localhost"
+port = 8500

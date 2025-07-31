@@ -230,6 +230,9 @@ class RAGPipeline:
         candidates = [did for did in bm25_ids if did in dense_ids] or bm25_ids
         candidates = candidates[: self.final_k * 3]
 
+        if not candidates:
+            return []
+
         # 4) Fetch docs + embeddings
         resp = dense_collection.get(ids=candidates, include=["documents", "embeddings"])
         ids, docs, embs = resp["ids"], resp["documents"], resp["embeddings"]
@@ -473,6 +476,9 @@ class RAGPipeline:
 
         # 10) Retrieval and rerank with citations
         candidates = self.retrieve(retrieval_q) if retrieval_q else []
+        if not candidates:
+            return []
+
         text_to_src = {txt: did for did, txt in candidates}
         base_texts = [txt for _, txt in candidates]
         metric_rerank = []
