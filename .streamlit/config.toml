@@ -2,3 +2,5 @@
 headless    = true        # don’t open a browser (required in containers)
 enableCORS  = false       # disable same-origin checks behind Cloud’s proxy
 port        = "${PORT}"   # interpolate the $PORT env var assigned by Cloud
+
+mainModule = "demo/streamlit_app.py"
