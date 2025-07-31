@@ -1,4 +1,4 @@
-#!/Users/shinyjay/Desktop/finagent/finagent/bin/python3.13
+#!/Users/shinyjay/Desktop/financial-agent/finagent/bin/python3.11
 # -*- coding: utf-8 -*-
 import re
 import sys
