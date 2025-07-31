@@ -17,6 +17,29 @@ if not os.path.isabs(persist_dir):
     persist_dir = os.path.join(project_root, persist_dir)
 persist_dir = os.path.abspath(persist_dir)
 
+# after: from app.rag_pipeline import RAGPipeline
+from pathlib import Path
+
+def wipe_json_entries(collection, data_dir: str):
+    """
+    Delete from ChromaDB only the entries that came from JSON files.
+    """
+    # 1) Gather all JSON file-stems
+    json_stems = {Path(f).stem for f in os.listdir(data_dir) if f.lower().endswith(".json")}
+    if not json_stems:
+        return
+
+    # 2) Pull every ID currently in the collection
+    all_ids = collection.get(ids=None)["ids"]
+
+    # 3) Find those whose ID starts with any JSON stem
+    to_delete = [did for did in all_ids if any(did.startswith(stem) for stem in json_stems)]
+    if to_delete:
+        print(f"🧹 Deleting {len(to_delete)} JSON‐based docs from ChromaDB…")
+        # 4) Delete them
+        collection.delete(ids=to_delete)
+
+
 # 3) Optionally wipe the store on demand to force re-ingest
 force = "--force" in sys.argv
 if force and os.path.isdir(persist_dir):
@@ -53,6 +76,13 @@ def main():
         overlap=50,
     )
 
+    #if force or db_is_empty:
+        # wipe only JSON docs so you can re-ingest them under the new chunker
+    #from app.retrieval.vectorstore import dense_collection, memory_collection
+    #wipe_json_entries(dense_collection, data_root)
+    #wipe_json_entries(memory_collection, data_root)
+
+
     # 9) Ingest documents only if the vector store is empty (or forced)
     if db_is_empty:
         print("🧹 Ingesting documents (this will call the embedding model once)…")
@@ -66,6 +96,17 @@ def main():
     else:
         print("✅ Vector store already exists—skipping ingest/embedding.")
 
+        # 9) Re-ingest only JSON files (old JSON entries were just wiped)
+    #print("🧹 Re-ingesting JSON files…")
+    #for dirpath, _, filenames in os.walk(data_root):
+        #for fname in filenames:
+            #if not fname.lower().endswith(".json"):
+                #continue
+            #file_path = os.path.join(dirpath, fname)
+            #print(f"=== Ingesting JSON: {file_path} ===")
+            #rag.ingest_file(file_path)
+
+
     # 10) Build BM25 index, hybrid structures, etc.
     print("🚧 Building BM25 and hybrid indexes…")
     rag.finalize()
@@ -76,7 +117,8 @@ def main():
         "에코프로비엠 위험지표를 알려줘",
         "에코프로비엠에 대한 투자 의견을 알려줘",
         "에코프로비엠에 대한 주가를 알려줘",
-        "에코프로비엠의 최신 뉴스를 알려줘",
+        "에코프로비엠 관련 뉴스를 알려줘",
+        "현재 에코프로비엠 30주를 가지고 있는데, 헷징하려면 어떻게 해야할 지 알려줘"
     ]
 
     results = {

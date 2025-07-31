@@ -88,12 +88,17 @@ def run_hedge_pipeline(
 
 if __name__ == "__main__":
     result = run_hedge_pipeline(base_ticker="247540", n_candidates=100, lookback_days=365)
-    print(result) #이거 주석처리해도됨
+    #print(result) #이거 주석처리해도됨
     ticker_list = result['ticker'].tolist()
     name_list = []
     for tic in ticker_list:
         name = find_name_by_ticker(tic)
         name_list.append(name)
     print(name_list)
+
+# at the bottom of app/hedging/compute_returns.py
+
+__all__ = ["run_hedge_pipeline"]
+
 
 
