@@ -19,6 +19,9 @@ from app.risk.d_e_r      import calculate_de_quarterly_growth
 from app.risk.evi        import calculate_evi
 from app.risk.foreign_organ import calculate_rank_days
 
+from app.hedging.regression import run_hedge_pipeline
+from app.utils.ticker_map import find_name_by_ticker
+
 
 
 from app.chunking.chunker import (
@@ -324,6 +327,7 @@ class RAGPipeline:
 
         # 1) Extract tickers (with history fallback)
         print("▶ extract_tickers_from_query →", extract_tickers_from_query(query))
+
         tickers = extract_tickers_from_query(query)
         if not tickers and history:
             for turn in reversed(history):
@@ -368,11 +372,13 @@ class RAGPipeline:
         domain = self.router.execute(payload).get("domain", None)
         print(f"🛠️  Classified domain → '{domain}'")
 
+        t0 = tickers[0]
+
         # 6) Compute risk metrics (only for specific domains)
         metrics: dict[str, dict[str, Any]] = {}
         if tickers and (domain == "위험 지표" or domain == "종목 위험 분석"):
 
-            t0 = tickers[0]
+
 
             # 1) volatility:
             vol = get_volatility_info(t0)

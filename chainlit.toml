@@ -1,0 +1,29 @@
+[app]
+entrypoint = "chainlit_app.py"
+host       = "0.0.0.0"
+port       = 8000
+user_env   = ["OPENAI_API_KEY", "HYPERCLOVA_API_KEY"]
+
+[project]
+enable_telemetry     = true
+session_timeout      = 3600
+user_session_timeout = 1296000
+allow_origins        = ["*"]
+
+[features]
+unsafe_allow_html = false
+latex             = false
+edit_message      = true
+
+[features.spontaneous_file_upload]
+enabled     = true
+accept      = ["*/*"]
+max_files   = 20
+max_size_mb = 500
+
+[features.audio]
+sample_rate = 24000
+
+[UI]
+name = "M.Riskit"
+cot  = "full"
