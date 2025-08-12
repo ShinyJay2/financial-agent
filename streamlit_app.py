@@ -10,6 +10,11 @@ from typing import List, Dict, Optional
 
 import streamlit as st
 
+# make Streamlit secrets visible to code that reads os.environ / pydantic Settings
+for k, v in st.secrets.items():
+    os.environ.setdefault(k, str(v))
+
+
 # Optional pdf.js viewer (preferred for large PDFs)
 try:
     from streamlit_pdf_viewer import pdf_viewer
