@@ -13,4 +13,8 @@ finagent/
 .vscode/
 
 # ChromaDB
-chroma_db/
+#chroma_db/
+
+#streamlit
+.streamlit/cache
+.streamlit/state

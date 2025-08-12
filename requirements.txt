@@ -4,6 +4,7 @@ pydantic-settings
 
 # Chainlit UI/demo framework
 streamlit
+streamlit-pdf-viewer
 
 # Vector store & embeddings
 chromadb

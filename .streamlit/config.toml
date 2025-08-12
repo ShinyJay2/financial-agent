@@ -5,3 +5,11 @@ enableXsrfProtection = true
 # enableCORS = true
 address = "localhost"
 port = 8500
+
+[theme]
+base="dark"
+primaryColor="#6366F1"
+backgroundColor="#0B0F19"
+secondaryBackgroundColor="#0F172A"
+textColor="#E5E7EB"
+
